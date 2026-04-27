@@ -1,0 +1,5 @@
+venv/
+lab_ta.db
+__pycache__/
+*.pyc
+.env

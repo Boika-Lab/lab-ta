@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab TA — Instructor Portal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #2E86AB;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      margin-top: 0.4rem;
+      color: #555;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: 2rem;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 0.35rem;
+      margin-top: 1.25rem;
+    }
+    label:first-of-type { margin-top: 0; }
+
+    input[type="text"],
+    input[type="password"],
+    select {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1.5px solid #d0d5dd;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      color: #1a1a2e;
+      transition: border-color 0.2s;
+      background: #fff;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #2E86AB;
+    }
+
+    .file-label {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      border: 1.5px dashed #d0d5dd;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: #555;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .file-label:hover {
+      border-color: #2E86AB;
+      background: #f0f8fc;
+    }
+    .file-label svg { flex-shrink: 0; color: #2E86AB; }
+    #file-input { display: none; }
+
+    #file-list {
+      margin-top: 0.6rem;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    #file-list li {
+      font-size: 0.82rem;
+      color: #444;
+      padding: 0.3rem 0.5rem;
+      background: #f7f9fc;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    #file-list li::before { content: "📄"; font-size: 0.8rem; }
+
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      width: 100%;
+      margin-top: 1.75rem;
+      padding: 0.85rem;
+      background: #2E86AB;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-primary:hover { background: #246d8c; }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { background: #a0bfcc; cursor: not-allowed; }
+
+    /* Loading */
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      padding: 2rem 0 1rem;
+      color: #555;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid #e0ecf1;
+      border-top-color: #2E86AB;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    #error-msg {
+      display: none;
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: #fff0f0;
+      border: 1px solid #f5c6cb;
+      border-radius: 8px;
+      color: #c0392b;
+      font-size: 0.9rem;
+    }
+
+    /* Result */
+    #result {
+      display: none;
+      margin-top: 1.5rem;
+    }
+    #result .success-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #1a7a4a;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+    }
+    #result .success-badge::before { content: "✅"; }
+
+    .url-box {
+      background: #f0f8fc;
+      border: 1.5px solid #b3d9e9;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #1a4a5e;
+      word-break: break-all;
+      margin-bottom: 0.75rem;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .btn-secondary {
+      flex: 1;
+      min-width: 120px;
+      padding: 0.6rem 1rem;
+      border: 1.5px solid #2E86AB;
+      border-radius: 8px;
+      background: #fff;
+      color: #2E86AB;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      text-align: center;
+    }
+    .btn-secondary:hover { background: #f0f8fc; }
+    .btn-secondary.filled {
+      background: #2E86AB;
+      color: #fff;
+    }
+    .btn-secondary.filled:hover { background: #246d8c; }
+
+    #qr-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 1rem 0;
+    }
+    #qr-wrap img {
+      border: 3px solid #e0ecf1;
+      border-radius: 8px;
+      width: 180px; height: 180px;
+    }
+
+    .hint-text {
+      font-size: 0.83rem;
+      color: #666;
+      line-height: 1.5;
+      border-top: 1px solid #eee;
+      padding-top: 1rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lab TA</h1>
+    <p>Configure a Socratic teaching assistant for your lab</p>
+  </header>
+
+  <div class="card">
+    <form id="setup-form">
+      <label for="lab-name">Lab Name</label>
+      <input type="text" id="lab-name" name="lab_name" placeholder="e.g. Enzyme Kinetics Lab" required />
+
+      <label for="api-key">Google API Key</label>
+      <input type="password" id="api-key" name="api_key" placeholder="AIza..." required />
+
+      <label>Model</label>
+      <p style="font-size:0.95rem;color:#1a1a2e;padding:0.65rem 0.85rem;background:#f7f9fc;border:1.5px solid #d0d5dd;border-radius:8px;">
+        Gemini 2.5 Flash
+      </p>
+
+      <label>Lab Documents</label>
+      <label class="file-label" for="file-input">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12V4m0 0L8 8m4-4l4 4"/>
+        </svg>
+        <span>Click to upload PDF, PPTX, or DOCX files</span>
+      </label>
+      <input type="file" id="file-input" name="files" multiple accept=".pdf,.pptx,.docx" />
+      <ul id="file-list"></ul>
+
+      <button type="submit" class="btn-primary" id="submit-btn">Generate Student TA Link</button>
+    </form>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <span>Processing lab materials...</span>
+    </div>
+
+    <div id="error-msg"></div>
+
+    <div id="result">
+      <div class="success-badge" id="success-label"></div>
+      <div class="url-box" id="student-url"></div>
+      <div class="btn-row">
+        <button class="btn-secondary" id="copy-btn" onclick="copyLink()">Copy Link</button>
+        <button class="btn-secondary filled" onclick="openLink()">Open Student TA</button>
+      </div>
+      <div id="qr-wrap">
+        <img id="qr-img" src="" alt="QR Code" />
+        <span style="font-size:0.8rem;color:#888;">Scan to open on mobile</span>
+      </div>
+      <p class="hint-text">
+        Share this link or QR code with your students. Each student opens it on their device — no login or installation required.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('file-input');
+    const fileList  = document.getElementById('file-list');
+
+    fileInput.addEventListener('change', () => {
+      fileList.innerHTML = '';
+      [...fileInput.files].forEach(f => {
+        const li = document.createElement('li');
+        li.textContent = f.name;
+        fileList.appendChild(li);
+      });
+    });
+
+    let studentUrl = '';
+
+    document.getElementById('setup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+
+      document.getElementById('error-msg').style.display = 'none';
+      document.getElementById('result').style.display = 'none';
+      form.style.display = 'none';
+      document.getElementById('loading').style.display = 'flex';
+
+      const data = new FormData(form);
+
+      try {
+        const res = await fetch('/api/configure', { method: 'POST', body: data });
+        const json = await res.json();
+
+        if (!res.ok) {
+          throw new Error(json.detail || 'Server error');
+        }
+
+        studentUrl = window.location.origin + json.student_url;
+
+        document.getElementById('success-label').textContent =
+          `Lab "${form.lab_name.value}" is ready!`;
+        document.getElementById('student-url').textContent = studentUrl;
+        document.getElementById('qr-img').src =
+          `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(studentUrl)}&size=200x200`;
+
+        document.getElementById('result').style.display = 'block';
+      } catch (err) {
+        form.style.display = 'block';
+        const errEl = document.getElementById('error-msg');
+        errEl.textContent = 'Error: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    });
+
+    function copyLink() {
+      navigator.clipboard.writeText(studentUrl).then(() => {
+        const btn = document.getElementById('copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy Link'; }, 2000);
+      });
+    }
+
+    function openLink() {
+      window.open(studentUrl, '_blank');
+    }
+  </script>
+</body>
+</html>
