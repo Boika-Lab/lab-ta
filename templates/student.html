@@ -297,6 +297,166 @@
     @media (max-width: 480px) {
       .msg-row { max-width: 92%; }
     }
+
+    /* ── Quiz panel ───────────────────────────────────── */
+    #quiz-panel {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow-y: auto;
+      padding: 1.5rem 1rem;
+      background: var(--bg);
+      -webkit-overflow-scrolling: touch;
+      gap: 0;
+    }
+
+    .quiz-card {
+      background: var(--card);
+      border-radius: 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.09);
+      padding: 1.75rem 1.5rem;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .quiz-icon {
+      font-size: 2.5rem;
+      text-align: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .quiz-card h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text);
+      text-align: center;
+      margin-bottom: 0.55rem;
+    }
+
+    .quiz-card p {
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 1.25rem;
+    }
+
+    .quiz-progress-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.65rem;
+      text-align: center;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .quiz-question-text {
+      font-size: 0.98rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.55;
+      margin-bottom: 1rem;
+    }
+
+    .quiz-choices {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1.1rem;
+    }
+
+    .choice-opt {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 0.9rem;
+      border: 1.5px solid #d0d5dd;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .choice-opt:hover:not(.disabled) {
+      border-color: var(--blue);
+      background: #f0f8fc;
+    }
+
+    .choice-opt.is-correct  { border-color: #1a7a4a; background: #f0faf5; }
+    .choice-opt.is-wrong    { border-color: #c0392b; background: #fff5f5; }
+    .choice-opt.disabled    { cursor: default; }
+
+    .choice-opt input[type="radio"] { accent-color: var(--blue); flex-shrink: 0; }
+
+    .choice-letter {
+      font-weight: 700;
+      font-size: 0.88rem;
+      color: var(--blue);
+      width: 1.25em;
+      flex-shrink: 0;
+    }
+
+    .choice-text {
+      font-size: 0.9rem;
+      color: var(--text);
+      line-height: 1.4;
+    }
+
+    .quiz-feedback {
+      font-size: 0.9rem;
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      margin-bottom: 1rem;
+      line-height: 1.5;
+    }
+
+    .quiz-feedback.correct { background:#f0faf5; color:#1a7a4a; border:1px solid #a8d5b9; }
+    .quiz-feedback.wrong   { background:#fff5f5; color:#c0392b; border:1px solid #f5c6cb; }
+
+    .btn-quiz {
+      width: 100%;
+      padding: 0.8rem;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-quiz:hover    { background: var(--blue-dark); }
+    .btn-quiz:disabled { background: #b0cdd8; cursor: not-allowed; }
+
+    .round-score {
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-align: center;
+      color: var(--text);
+      margin-bottom: 0.65rem;
+    }
+
+    .failed-list {
+      list-style: none;
+      margin: 0 0 1.25rem;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .failed-list li {
+      font-size: 0.85rem;
+      color: #c0392b;
+      padding: 0.35rem 0.6rem;
+      background: #fff5f5;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
@@ -308,6 +468,8 @@
       </div>
       <button id="tts-btn" title="Toggle text-to-speech" aria-label="Toggle voice">🔊</button>
     </div>
+
+    <div id="quiz-panel"></div>
 
     <div id="chat-area">
       <div class="welcome" id="welcome-msg">
@@ -352,7 +514,7 @@
     const ttsBtn    = document.getElementById('tts-btn');
     const labNameEl = document.getElementById('lab-name-el');
 
-    // ── Load lab info ──────────────────────────────────────────────────────────
+    // ── Load lab info + init quiz ──────────────────────────────────────────────
     (async () => {
       try {
         const res  = await fetch(`/api/lab/${token}`);
@@ -363,6 +525,7 @@
       } catch (e) {
         labNameEl.textContent = 'Lab TA';
       }
+      await initQuiz();
     })();
 
     // ── Rendering helpers ──────────────────────────────────────────────────────
@@ -550,6 +713,269 @@
       listening = false;
       micBtn.classList.remove('listening');
       textInput.placeholder = 'Ask the TA...';
+    }
+
+    // ── Quiz ──────────────────────────────────────────────────────────────────
+    const LS_STATE   = `labta_quiz_state_${token}`;
+    const LS_CLEARED = `labta_cleared_${token}`;
+
+    let quizData       = null;  // {quiz_id, questions:[...]}
+    let roundQuestions = [];    // questions for current round
+    let roundIndex     = 0;     // index into roundQuestions
+    let roundAnswers   = {};    // {question_id: {correct, explanation, chosen}}
+    let quizPhase      = 'idle';
+
+    async function initQuiz() {
+      if (localStorage.getItem(LS_CLEARED)) return;
+
+      let res;
+      try {
+        res = await fetch(`/quiz/active/${token}`);
+      } catch { return; }
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.quiz_id) return;
+
+      quizData = data;
+
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(LS_STATE) || 'null'); } catch {}
+
+      if (saved && saved.quiz_id === data.quiz_id) {
+        roundQuestions = saved.roundQuestionIds
+          .map(id => quizData.questions.find(q => q.id === id))
+          .filter(Boolean);
+        roundIndex   = saved.roundIndex;
+        roundAnswers = saved.roundAnswers;
+        quizPhase    = saved.phase;
+      } else {
+        roundQuestions = [...quizData.questions];
+        roundIndex     = 0;
+        roundAnswers   = {};
+        quizPhase      = 'banner';
+      }
+
+      showQuizPanel();
+      renderQuiz();
+    }
+
+    function saveQuizState() {
+      if (quizPhase === 'cleared') { localStorage.removeItem(LS_STATE); return; }
+      localStorage.setItem(LS_STATE, JSON.stringify({
+        quiz_id: quizData.quiz_id,
+        roundQuestionIds: roundQuestions.map(q => q.id),
+        roundIndex,
+        roundAnswers,
+        phase: quizPhase,
+      }));
+    }
+
+    function showQuizPanel() {
+      document.getElementById('quiz-panel').style.display = 'flex';
+      document.getElementById('chat-area').style.display  = 'none';
+      document.getElementById('input-bar').style.display  = 'none';
+    }
+
+    function hideQuizPanel() {
+      document.getElementById('quiz-panel').style.display = 'none';
+      document.getElementById('chat-area').style.display  = 'flex';
+      document.getElementById('input-bar').style.display  = 'flex';
+    }
+
+    function renderQuiz() {
+      const panel = document.getElementById('quiz-panel');
+      panel.innerHTML = '';
+      if      (quizPhase === 'banner')           renderBanner(panel);
+      else if (quizPhase === 'question')         renderQuestion(panel);
+      else if (quizPhase === 'question-result')  renderQuestionResult(panel);
+      else if (quizPhase === 'round-complete')   renderRoundComplete(panel);
+      else if (quizPhase === 'cleared')          renderCleared(panel);
+      saveQuizState();
+    }
+
+    function qEsc(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function renderBanner(panel) {
+      const card = document.createElement('div');
+      card.className = 'quiz-card';
+      card.innerHTML = `
+        <div class="quiz-icon">📋</div>
+        <h2>Prelab Quiz Required</h2>
+        <p>Answer all questions correctly to begin the lab. Wrong answers can be retried — you'll only repeat the ones you missed.</p>
+        <button class="btn-quiz" onclick="startQuiz()">Start Quiz</button>
+      `;
+      panel.appendChild(card);
+    }
+
+    function startQuiz() {
+      roundQuestions = [...quizData.questions];
+      roundIndex     = 0;
+      roundAnswers   = {};
+      quizPhase      = 'question';
+      renderQuiz();
+    }
+
+    function renderQuestion(panel) {
+      const q = roundQuestions[roundIndex];
+      const label = document.createElement('div');
+      label.className = 'quiz-progress-label';
+      label.textContent = `Question ${roundIndex + 1} of ${roundQuestions.length}`;
+
+      const card = document.createElement('div');
+      card.className = 'quiz-card';
+      card.innerHTML = `
+        <p class="quiz-question-text">${qEsc(q.question)}</p>
+        <div class="quiz-choices" id="choices-wrap">
+          ${['A','B','C','D'].map(l => `
+            <label class="choice-opt">
+              <input type="radio" name="q${q.id}" value="${l}" />
+              <span class="choice-letter">${l}</span>
+              <span class="choice-text">${qEsc(q.choices[l])}</span>
+            </label>
+          `).join('')}
+        </div>
+        <button class="btn-quiz" id="submit-q-btn" disabled onclick="submitAnswer(${q.id})">Submit Answer</button>
+      `;
+
+      panel.appendChild(label);
+      panel.appendChild(card);
+
+      card.querySelectorAll(`input[name="q${q.id}"]`).forEach(r => {
+        r.addEventListener('change', () => {
+          document.getElementById('submit-q-btn').disabled = false;
+        });
+      });
+    }
+
+    async function submitAnswer(questionId) {
+      const selected = document.querySelector(`input[name="q${questionId}"]:checked`);
+      if (!selected) return;
+      const btn = document.getElementById('submit-q-btn');
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+
+      try {
+        const res = await fetch(`/quiz/${quizData.quiz_id}/submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers: { [questionId]: selected.value } }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+
+        const result = data.results[questionId];
+        roundAnswers[questionId] = {
+          correct:     result.correct,
+          explanation: result.explanation,
+          chosen:      selected.value,
+        };
+        quizPhase = 'question-result';
+        renderQuiz();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Submit Answer';
+        showToast('Error: ' + err.message);
+      }
+    }
+
+    function renderQuestionResult(panel) {
+      const q   = roundQuestions[roundIndex];
+      const ans = roundAnswers[q.id];
+      const isLast = roundIndex === roundQuestions.length - 1;
+
+      const label = document.createElement('div');
+      label.className = 'quiz-progress-label';
+      label.textContent = `Question ${roundIndex + 1} of ${roundQuestions.length}`;
+
+      const card = document.createElement('div');
+      card.className = 'quiz-card';
+      card.innerHTML = `
+        <p class="quiz-question-text">${qEsc(q.question)}</p>
+        <div class="quiz-choices">
+          ${['A','B','C','D'].map(l => {
+            let cls = 'choice-opt disabled';
+            if (l === ans.chosen && ans.correct)  cls += ' is-correct';
+            if (l === ans.chosen && !ans.correct) cls += ' is-wrong';
+            return `<label class="${cls}">
+              <input type="radio" name="qr${q.id}" value="${l}" disabled ${l===ans.chosen?'checked':''} />
+              <span class="choice-letter">${l}</span>
+              <span class="choice-text">${qEsc(q.choices[l])}</span>
+            </label>`;
+          }).join('')}
+        </div>
+        <div class="quiz-feedback ${ans.correct ? 'correct' : 'wrong'}">
+          ${ans.correct ? '✓ Correct!' : `✗ Incorrect. ${qEsc(ans.explanation || '')}`}
+        </div>
+        <button class="btn-quiz" onclick="nextQuestion()">${isLast ? 'See Results' : 'Next Question'}</button>
+      `;
+
+      panel.appendChild(label);
+      panel.appendChild(card);
+    }
+
+    function nextQuestion() {
+      if (roundIndex < roundQuestions.length - 1) {
+        roundIndex++;
+        quizPhase = 'question';
+      } else {
+        quizPhase = 'round-complete';
+      }
+      renderQuiz();
+    }
+
+    function renderRoundComplete(panel) {
+      const failed = roundQuestions.filter(q => !roundAnswers[q.id]?.correct);
+      if (failed.length === 0) {
+        quizPhase = 'cleared';
+        localStorage.setItem(LS_CLEARED, '1');
+        localStorage.removeItem(LS_STATE);
+        renderQuiz();
+        return;
+      }
+
+      const correct = roundQuestions.length - failed.length;
+      const card = document.createElement('div');
+      card.className = 'quiz-card';
+      card.innerHTML = `
+        <div class="round-score">${correct} / ${roundQuestions.length} correct</div>
+        <p>Almost there! Retry the ${failed.length} question${failed.length > 1 ? 's' : ''} below:</p>
+        <ul class="failed-list">
+          ${failed.map((q, i) => `<li>${i+1}. ${qEsc(q.question.length > 90 ? q.question.slice(0,87)+'…' : q.question)}</li>`).join('')}
+        </ul>
+        <button class="btn-quiz" onclick="retryFailed()">Retry Failed Questions</button>
+      `;
+      panel.appendChild(card);
+    }
+
+    function retryFailed() {
+      const failedIds = new Set(
+        Object.entries(roundAnswers)
+          .filter(([, a]) => !a.correct)
+          .map(([id]) => parseInt(id))
+      );
+      roundQuestions = quizData.questions.filter(q => failedIds.has(q.id));
+      roundIndex     = 0;
+      roundAnswers   = {};
+      quizPhase      = 'question';
+      renderQuiz();
+    }
+
+    function renderCleared(panel) {
+      const card = document.createElement('div');
+      card.className = 'quiz-card';
+      card.innerHTML = `
+        <div class="quiz-icon">✅</div>
+        <h2>You're cleared!</h2>
+        <p>All correct! You're cleared to begin the lab.</p>
+        <button class="btn-quiz" onclick="proceedToChat()">Start Lab</button>
+      `;
+      panel.appendChild(card);
+    }
+
+    function proceedToChat() {
+      hideQuizPanel();
     }
 
     // ── PWA: Add to Home Screen prompt ────────────────────────────────────────

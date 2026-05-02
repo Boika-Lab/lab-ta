@@ -290,6 +290,51 @@
       <p class="hint-text">
         Share this link or QR code with your students. Each student opens it on their device — no login or installation required.
       </p>
+
+      <!-- ── Prelab Quiz ─────────────────────────────── -->
+      <div id="quiz-section" style="margin-top:1.5rem;">
+        <hr style="border:none;border-top:1px solid #eee;margin:0 0 1.25rem;" />
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+          <span style="font-size:1rem;font-weight:700;color:#1a1a2e;">Prelab Quiz</span>
+          <button class="btn-secondary" id="stats-btn" style="display:none;padding:0.4rem 0.85rem;min-width:0;font-size:0.85rem;" onclick="showStats()">View Stats</button>
+        </div>
+
+        <div id="quiz-gen-controls">
+          <label for="n-questions" style="margin-top:0;">Number of Questions</label>
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.35rem;">
+            <input type="number" id="n-questions" min="3" max="10" value="5" style="width:80px;" />
+            <span style="font-size:0.82rem;color:#888;">min 3 · max 10</span>
+          </div>
+          <button class="btn-primary" id="gen-quiz-btn" style="margin-top:1rem;" onclick="generateQuiz()">
+            Generate Prelab Quiz
+          </button>
+        </div>
+
+        <div id="quiz-gen-loading" style="display:none;text-align:center;padding:1.25rem 0;">
+          <div class="spinner" style="margin:0 auto;"></div>
+          <p style="margin-top:0.75rem;color:#555;font-size:0.9rem;">Generating quiz questions…</p>
+        </div>
+
+        <div id="quiz-error" style="display:none;margin-top:0.75rem;padding:0.75rem 1rem;background:#fff0f0;border:1px solid #f5c6cb;border-radius:8px;color:#c0392b;font-size:0.9rem;"></div>
+
+        <div id="quiz-draft-editor" style="display:none;">
+          <div id="questions-list"></div>
+          <button class="btn-primary" onclick="publishQuiz()" id="publish-btn" style="margin-top:1.25rem;">
+            Save &amp; Publish Quiz
+          </button>
+        </div>
+
+        <div id="quiz-published-state" style="display:none;">
+          <div style="display:flex;align-items:center;gap:0.5rem;color:#1a7a4a;font-weight:600;font-size:0.95rem;margin-bottom:0.85rem;">
+            ✅ Prelab quiz is live! Students must pass it before chatting with the TA.
+          </div>
+          <button class="btn-secondary" onclick="closeAndRegenerate()" style="font-size:0.85rem;padding:0.45rem 0.9rem;min-width:0;">
+            Close quiz &amp; generate a new one
+          </button>
+        </div>
+
+        <div id="stats-panel" style="display:none;margin-top:1.25rem;"></div>
+      </div>
     </div>
   </div>
 
@@ -307,6 +352,7 @@
     });
 
     let studentUrl = '';
+    let currentToken = '';
 
     document.getElementById('setup-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -328,6 +374,7 @@
         }
 
         studentUrl = window.location.origin + json.student_url;
+        currentToken = json.token;
 
         document.getElementById('success-label').textContent =
           `Lab "${form.lab_name.value}" is ready!`;
@@ -356,6 +403,214 @@
 
     function openLink() {
       window.open(studentUrl, '_blank');
+    }
+
+    // ── Quiz management ────────────────────────────────────────────────────────
+    let currentQuizId = null;
+    let publishedQuizId = null;
+
+    function showQuizError(msg) {
+      const el = document.getElementById('quiz-error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function escHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function escAttr(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function generateQuiz() {
+      const n = parseInt(document.getElementById('n-questions').value);
+      if (isNaN(n) || n < 3 || n > 10) {
+        showQuizError('Number of questions must be between 3 and 10.');
+        return;
+      }
+      document.getElementById('quiz-error').style.display = 'none';
+      document.getElementById('quiz-gen-controls').style.display = 'none';
+      document.getElementById('quiz-gen-loading').style.display = 'block';
+      document.getElementById('quiz-draft-editor').style.display = 'none';
+
+      try {
+        const res = await fetch('/quiz/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: currentToken, n_questions: n }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+
+        currentQuizId = data.quiz_id;
+        renderDraftEditor(data.questions);
+        document.getElementById('quiz-draft-editor').style.display = 'block';
+      } catch (err) {
+        document.getElementById('quiz-gen-controls').style.display = 'block';
+        showQuizError('Quiz generation failed — please try again. ' + err.message);
+      } finally {
+        document.getElementById('quiz-gen-loading').style.display = 'none';
+      }
+    }
+
+    function renderDraftEditor(questions) {
+      const container = document.getElementById('questions-list');
+      container.innerHTML = '';
+      questions.forEach((q, i) => appendQuestionCard(container, q, i + 1));
+    }
+
+    function appendQuestionCard(container, q, num) {
+      const card = document.createElement('div');
+      card.dataset.qid = q.id;
+      card.style.cssText = 'border:1.5px solid #d0d5dd;border-radius:10px;padding:1rem;margin-bottom:0.85rem;background:#fafbfc;';
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.65rem;">
+          <span style="font-size:0.78rem;font-weight:700;color:#2E86AB;text-transform:uppercase;letter-spacing:0.04em;">Question ${num}</span>
+          <button onclick="deleteQuestion(this)" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:0.85rem;padding:0 0.2rem;">✕ Remove</button>
+        </div>
+        <label style="margin-top:0;">Question Text</label>
+        <textarea class="q-question" rows="2" style="width:100%;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.9rem;font-family:inherit;resize:vertical;">${escHtml(q.question)}</textarea>
+        <label>Choice A</label>
+        <input type="text" class="q-choice-a" value="${escAttr(q.choices.A)}" style="width:100%;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.9rem;" />
+        <label>Choice B</label>
+        <input type="text" class="q-choice-b" value="${escAttr(q.choices.B)}" style="width:100%;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.9rem;" />
+        <label>Choice C</label>
+        <input type="text" class="q-choice-c" value="${escAttr(q.choices.C)}" style="width:100%;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.9rem;" />
+        <label>Choice D</label>
+        <input type="text" class="q-choice-d" value="${escAttr(q.choices.D)}" style="width:100%;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.9rem;" />
+        <label>Correct Answer</label>
+        <select class="q-correct" style="width:100%;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.9rem;">
+          ${['A','B','C','D'].map(l => `<option value="${l}"${q.correct===l?' selected':''}>${l}</option>`).join('')}
+        </select>
+        <label>Explanation (shown to student on wrong answer)</label>
+        <textarea class="q-explanation" rows="2" style="width:100%;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.9rem;font-family:inherit;resize:vertical;">${escHtml(q.explanation)}</textarea>
+      `;
+      container.appendChild(card);
+    }
+
+    function deleteQuestion(btn) {
+      btn.closest('[data-qid]').remove();
+      document.querySelectorAll('#questions-list [data-qid]').forEach((card, i) => {
+        card.querySelector('span').textContent = `Question ${i + 1}`;
+      });
+    }
+
+    function collectQuestions() {
+      return Array.from(document.querySelectorAll('#questions-list [data-qid]')).map(card => ({
+        id: parseInt(card.dataset.qid),
+        question: card.querySelector('.q-question').value.trim(),
+        choice_a: card.querySelector('.q-choice-a').value.trim(),
+        choice_b: card.querySelector('.q-choice-b').value.trim(),
+        choice_c: card.querySelector('.q-choice-c').value.trim(),
+        choice_d: card.querySelector('.q-choice-d').value.trim(),
+        correct: card.querySelector('.q-correct').value,
+        explanation: card.querySelector('.q-explanation').value.trim(),
+      }));
+    }
+
+    async function publishQuiz() {
+      const questions = collectQuestions();
+      if (questions.length === 0) {
+        showQuizError('Add at least one question before publishing.');
+        return;
+      }
+      const btn = document.getElementById('publish-btn');
+      btn.disabled = true;
+      btn.textContent = 'Publishing…';
+      document.getElementById('quiz-error').style.display = 'none';
+
+      try {
+        let res = await fetch(`/quiz/${currentQuizId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questions }),
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Save failed'); }
+
+        res = await fetch(`/quiz/${currentQuizId}/publish`, { method: 'POST' });
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (res.status === 409) {
+            const match = data.detail.match(/#(\d+)/);
+            const existingId = match ? parseInt(match[1]) : null;
+            if (existingId && confirm(`A published quiz already exists (quiz #${existingId}). Close it and publish this one?`)) {
+              const closeRes = await fetch(`/quiz/${existingId}/close`, { method: 'POST' });
+              if (!closeRes.ok) throw new Error('Failed to close existing quiz');
+              const pubRes = await fetch(`/quiz/${currentQuizId}/publish`, { method: 'POST' });
+              if (!pubRes.ok) { const d = await pubRes.json(); throw new Error(d.detail || 'Publish failed'); }
+              publishedQuizId = currentQuizId;
+              showPublishedState();
+              return;
+            }
+            btn.disabled = false;
+            btn.textContent = 'Save & Publish Quiz';
+            return;
+          }
+          throw new Error(data.detail || 'Publish failed');
+        }
+
+        publishedQuizId = currentQuizId;
+        showPublishedState();
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Save & Publish Quiz';
+        showQuizError('Error: ' + err.message);
+      }
+    }
+
+    function showPublishedState() {
+      document.getElementById('quiz-draft-editor').style.display = 'none';
+      document.getElementById('quiz-published-state').style.display = 'block';
+      document.getElementById('stats-btn').style.display = '';
+    }
+
+    async function showStats() {
+      const id = publishedQuizId || currentQuizId;
+      if (!id) return;
+      const panel = document.getElementById('stats-panel');
+      panel.innerHTML = '<p style="color:#888;font-size:0.9rem;">Loading…</p>';
+      panel.style.display = 'block';
+      try {
+        const res = await fetch(`/quiz/${id}/stats`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Error');
+        if (data.stats.length === 0) {
+          panel.innerHTML = '<p style="color:#888;font-size:0.9rem;">No responses yet.</p>';
+          return;
+        }
+        let html = '<div style="font-weight:700;font-size:0.88rem;color:#1a1a2e;margin-bottom:0.6rem;">Anonymous Quiz Stats</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:0.5rem;">';
+        data.stats.forEach((s, i) => {
+          const pct = s.pct_correct !== null ? s.pct_correct + '%' : 'N/A';
+          html += `<div style="background:#f7f9fc;border-radius:8px;padding:0.65rem 0.9rem;font-size:0.85rem;">
+            <div style="font-weight:600;margin-bottom:0.25rem;">Q${i+1}: ${escHtml(s.question)}</div>
+            <div style="color:#555;">${s.total_attempts} attempts · ${s.correct_attempts} correct · ${pct} pass rate</div>
+          </div>`;
+        });
+        html += '</div>';
+        panel.innerHTML = html;
+      } catch (err) {
+        panel.innerHTML = `<p style="color:#c0392b;font-size:0.9rem;">Error loading stats: ${escHtml(err.message)}</p>`;
+      }
+    }
+
+    async function closeAndRegenerate() {
+      if (!publishedQuizId) return;
+      if (!confirm('Close the current quiz and generate a new one?')) return;
+      try {
+        const res = await fetch(`/quiz/${publishedQuizId}/close`, { method: 'POST' });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Error'); }
+        publishedQuizId = null;
+        currentQuizId = null;
+        document.getElementById('quiz-published-state').style.display = 'none';
+        document.getElementById('stats-panel').style.display = 'none';
+        document.getElementById('stats-btn').style.display = 'none';
+        document.getElementById('quiz-error').style.display = 'none';
+        document.getElementById('quiz-gen-controls').style.display = 'block';
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
     }
   </script>
 </body>
