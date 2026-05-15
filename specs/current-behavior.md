@@ -30,8 +30,17 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - `GET /api/instructor/lab/{token}` returns dashboard hydration data including
   lab name, model, relative student URL, relative instructor URL, chat logging
   status, and the active published quiz summary when one exists.
+- `GET /instructor/labs` serves a saved-labs index that helps instructors
+  recover previous lab sessions from the local database.
+- `GET /api/instructor/labs` returns saved labs sorted newest first. Each row
+  includes lab name, token, relative student URL, relative instructor dashboard
+  URL, chat logging status, creation timestamp, quiz count/status summary, and
+  chat log exchange count.
+- Saved-lab API rows exclude API keys and raw uploaded lab document content.
 - The instructor dashboard uses the same unauthenticated token model as the
-  student page. Anyone with the instructor URL can manage the lab.
+  student page. Anyone with the instructor dashboard URL can manage the lab, and
+  anyone with the saved-labs index URL can view local lab metadata and open
+  dashboard or student links.
 - The instructor dashboard result panel includes chat log controls. Refresh
   loads the current JSON-backed log view for that token, and Download JSON
   exports the same data.

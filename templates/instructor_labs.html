@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab TA - Saved Labs</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #2E86AB;
+    }
+
+    .subtitle {
+      margin-top: 0.35rem;
+      color: #555;
+      font-size: 0.95rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 0.55rem 0.9rem;
+      border: 1.5px solid #2E86AB;
+      border-radius: 8px;
+      background: #fff;
+      color: #2E86AB;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      background: #2E86AB;
+      color: #fff;
+    }
+
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    #status {
+      padding: 1.25rem;
+      color: #555;
+      font-size: 0.95rem;
+    }
+
+    .labs-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .lab-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.35fr) minmax(220px, 1fr) auto;
+      gap: 1rem;
+      align-items: center;
+      padding: 1rem 1.25rem;
+      border-top: 1px solid #e5e8ee;
+    }
+
+    .lab-row:first-child {
+      border-top: none;
+    }
+
+    .lab-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1a1a2e;
+      overflow-wrap: anywhere;
+    }
+
+    .token {
+      margin-top: 0.3rem;
+      color: #1a4a5e;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.82rem;
+    }
+
+    .created {
+      margin-top: 0.35rem;
+      color: #667085;
+      font-size: 0.82rem;
+    }
+
+    .metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+      background: #f7f9fc;
+      border: 1px solid #e0e5ec;
+      color: #445;
+      font-size: 0.78rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .pill.active {
+      background: #edf8f2;
+      border-color: #badfca;
+      color: #1a7a4a;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .error {
+      color: #c0392b;
+      background: #fff0f0;
+    }
+
+    @media (max-width: 800px) {
+      header {
+        flex-direction: column;
+      }
+
+      .lab-row {
+        grid-template-columns: 1fr;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>Saved Labs</h1>
+        <p class="subtitle">Recover previous lab sessions and open their instructor or student URLs.</p>
+      </div>
+      <a class="btn" href="/">Create New Lab</a>
+    </header>
+
+    <section class="panel" aria-labelledby="saved-labs-title">
+      <h2 id="saved-labs-title" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">Saved lab sessions</h2>
+      <div id="status">Loading saved labs...</div>
+      <div id="labs-list" class="labs-list" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const labsList = document.getElementById('labs-list');
+
+    function escHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function escAttr(str) {
+      return escHtml(str).replace(/"/g, '&quot;');
+    }
+
+    function formatDate(value) {
+      if (!value) return 'Unknown date';
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return value;
+      return parsed.toLocaleString();
+    }
+
+    function quizLabel(lab) {
+      if (!lab.has_quizzes) return 'No quizzes';
+      if (lab.active_quiz_status) return `${lab.quiz_count} quiz${lab.quiz_count === 1 ? '' : 'zes'} - active`;
+      return `${lab.quiz_count} quiz${lab.quiz_count === 1 ? '' : 'zes'} - none active`;
+    }
+
+    function renderLabs(labs) {
+      labsList.innerHTML = '';
+      if (labs.length === 0) {
+        statusEl.textContent = 'No saved labs yet. Create a lab to see it here.';
+        statusEl.style.display = 'block';
+        return;
+      }
+
+      statusEl.style.display = 'none';
+      labs.forEach(lab => {
+        const row = document.createElement('article');
+        row.className = 'lab-row';
+        row.innerHTML = `
+          <div>
+            <div class="lab-name">${escHtml(lab.lab_name)}</div>
+            <div class="token">${escHtml(lab.token)}</div>
+            <div class="created">${escHtml(formatDate(lab.created_at))}</div>
+          </div>
+          <div class="metrics">
+            <span class="pill">${lab.chat_logging_enabled ? 'Chat logs on' : 'Chat logs off'}</span>
+            <span class="pill${lab.active_quiz_status ? ' active' : ''}">${escHtml(quizLabel(lab))}</span>
+            <span class="pill">${lab.chat_log_exchange_count} chat exchange${lab.chat_log_exchange_count === 1 ? '' : 's'}</span>
+          </div>
+          <div class="actions">
+            <a class="btn primary" href="${escAttr(lab.instructor_url)}">Instructor Dashboard</a>
+            <a class="btn" href="${escAttr(lab.student_url)}">Student URL</a>
+          </div>
+        `;
+        labsList.appendChild(row);
+      });
+    }
+
+    async function loadSavedLabs() {
+      try {
+        const res = await fetch('/api/instructor/labs');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+        renderLabs(data);
+      } catch (err) {
+        statusEl.className = 'error';
+        statusEl.textContent = 'Error loading saved labs: ' + err.message;
+        statusEl.style.display = 'block';
+      }
+    }
+
+    loadSavedLabs();
+  </script>
+</body>
+</html>

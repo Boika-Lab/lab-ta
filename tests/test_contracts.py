@@ -32,8 +32,10 @@ def client():
 
 def insert_lab(
     token: str = "abc12345",
+    lab_name: str = "Electrochemistry",
     content: str = "Lab safety notes",
     chat_logging_enabled: bool = False,
+    created_at: str = "2026-05-15T00:00:00",
 ) -> str:
     with main.get_db() as conn:
         conn.execute(
@@ -42,11 +44,11 @@ def insert_lab(
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
-                "Electrochemistry",
+                lab_name,
                 content,
                 "test-key",
                 llm_config.CHAT_MODEL,
-                "2026-05-15T00:00:00",
+                created_at,
                 1 if chat_logging_enabled else 0,
             ),
         )
@@ -224,6 +226,90 @@ def test_instructor_dashboard_page_known_token_and_404(client):
     missing = client.get("/instructor/missing")
     assert missing.status_code == 404
     assert missing.json()["detail"] == "Lab not found"
+
+
+def test_instructor_labs_page_is_not_interpreted_as_token(client):
+    response = client.get("/instructor/labs")
+
+    assert response.status_code == 200
+    assert "Saved Labs" in response.text
+    assert "fetch('/api/instructor/labs')" in response.text
+
+
+def test_instructor_labs_api_empty_database(client):
+    response = client.get("/api/instructor/labs")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_instructor_labs_api_returns_operational_summary_newest_first(client):
+    older = insert_lab(
+        token="old12345",
+        lab_name="Older Lab",
+        content="Sensitive raw lab text",
+        chat_logging_enabled=False,
+        created_at="2026-05-14T09:00:00",
+    )
+    newer = insert_lab(
+        token="new12345",
+        lab_name="Newer Lab",
+        chat_logging_enabled=True,
+        created_at="2026-05-15T09:00:00",
+    )
+
+    with main.get_db() as conn:
+        conn.execute(
+            "INSERT INTO quizzes (token, status, n_questions, created_at) "
+            "VALUES (?, 'draft', 5, ?)",
+            (newer, "2026-05-15T09:05:00"),
+        )
+        conn.execute(
+            "INSERT INTO quizzes (token, status, n_questions, created_at) "
+            "VALUES (?, 'published', 3, ?)",
+            (newer, "2026-05-15T09:10:00"),
+        )
+        conn.execute(
+            "INSERT INTO quizzes (token, status, n_questions, created_at) "
+            "VALUES (?, 'closed', 4, ?)",
+            (older, "2026-05-14T09:05:00"),
+        )
+        conn.commit()
+    main.persist_chat_log(newer, "session-a", "Question 1?", "Response 1", False)
+    main.persist_chat_log(newer, "session-b", "Question 2?", "Response 2", True)
+
+    response = client.get("/api/instructor/labs")
+
+    assert response.status_code == 200
+    labs = response.json()
+    assert [lab["token"] for lab in labs] == [newer, older]
+    assert labs[0] == {
+        "token": newer,
+        "lab_name": "Newer Lab",
+        "student_url": f"/lab/{newer}",
+        "instructor_url": f"/instructor/{newer}",
+        "chat_logging_enabled": True,
+        "created_at": "2026-05-15T09:00:00",
+        "quiz_count": 2,
+        "has_quizzes": True,
+        "active_quiz_status": "published",
+        "chat_log_exchange_count": 2,
+    }
+    assert labs[1] == {
+        "token": older,
+        "lab_name": "Older Lab",
+        "student_url": f"/lab/{older}",
+        "instructor_url": f"/instructor/{older}",
+        "chat_logging_enabled": False,
+        "created_at": "2026-05-14T09:00:00",
+        "quiz_count": 1,
+        "has_quizzes": True,
+        "active_quiz_status": None,
+        "chat_log_exchange_count": 0,
+    }
+    assert "api_key" not in labs[0]
+    assert "lab_content" not in labs[0]
+    assert "Sensitive raw lab text" not in response.text
 
 
 def test_instructor_lab_api_returns_dashboard_hydration_without_active_quiz(client):
@@ -739,6 +825,7 @@ def test_instructor_dashboard_hydration_hooks_exist():
     template = Path("templates/instructor.html").read_text()
 
     assert "window.location.assign(json.instructor_url)" in template
+    assert 'href="/instructor/labs"' in template
     assert "function hydrateInstructorDashboard(token)" in template
     assert "function renderDashboard(data)" in template
     assert "window.location.pathname.match(/^\\/instructor\\/([^/]+)$/)" in template
@@ -746,6 +833,18 @@ def test_instructor_dashboard_hydration_hooks_exist():
     assert "data.active_quiz.quiz_id" in template
     assert "publishedQuizId = data.active_quiz.quiz_id" in template
     assert "document.getElementById('quiz-gen-controls').style.display = 'block'" in template
+
+
+def test_instructor_labs_template_hooks_exist():
+    template = Path("templates/instructor_labs.html").read_text()
+
+    assert "Saved Labs" in template
+    assert "fetch('/api/instructor/labs')" in template
+    assert 'href="${escAttr(lab.instructor_url)}"' in template
+    assert 'href="${escAttr(lab.student_url)}"' in template
+    assert "Instructor Dashboard" in template
+    assert "Student URL" in template
+    assert "No saved labs yet" in template
 
 
 def test_instructor_landing_page_shows_configured_model_settings(client):

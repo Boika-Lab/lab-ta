@@ -22,6 +22,7 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
 - `current-behavior.md` documents the inherited app behavior.
 - `centralized-gemini-model-configuration.md` documents server-controlled
   Gemini model role configuration.
+- `instructor-lab-index.md` documents saved-lab lookup and recovery behavior.
 - `llm-prompt-externalization.md` documents the externalized prompt template
   behavior.
 - `persistent-instructor-lab-dashboard.md` documents durable unauthenticated

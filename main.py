@@ -207,6 +207,11 @@ async def instructor_portal() -> HTMLResponse:
     return HTMLResponse(content=render_instructor_html())
 
 
+@app.get("/instructor/labs", response_class=HTMLResponse)
+async def instructor_labs() -> HTMLResponse:
+    return HTMLResponse(content=load_html("instructor_labs.html"))
+
+
 @app.get("/instructor/{token}", response_class=HTMLResponse)
 async def instructor_dashboard(token: str) -> HTMLResponse:
     with get_db() as conn:
@@ -301,6 +306,49 @@ async def get_lab_info(token: str):
     if not row:
         raise HTTPException(status_code=404, detail="Lab not found")
     return {"lab_name": row["lab_name"], "model": row["model"]}
+
+
+@app.get("/api/instructor/labs")
+async def get_instructor_labs():
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                l.token,
+                l.lab_name,
+                l.created_at,
+                l.chat_logging_enabled,
+                COUNT(DISTINCT q.id) AS quiz_count,
+                MAX(CASE WHEN q.status = 'published' THEN q.status ELSE NULL END)
+                    AS active_quiz_status,
+                COUNT(DISTINCT cl.id) AS chat_log_exchange_count
+            FROM labs l
+            LEFT JOIN quizzes q ON q.token = l.token
+            LEFT JOIN chat_logs cl ON cl.token = l.token
+            GROUP BY l.token, l.lab_name, l.created_at, l.chat_logging_enabled
+            ORDER BY l.created_at DESC, l.token DESC
+            """
+        ).fetchall()
+
+    labs = []
+    for row in rows:
+        quiz_count = row["quiz_count"]
+        token = row["token"]
+        labs.append(
+            {
+                "token": token,
+                "lab_name": row["lab_name"],
+                "student_url": f"/lab/{token}",
+                "instructor_url": f"/instructor/{token}",
+                "chat_logging_enabled": bool(row["chat_logging_enabled"]),
+                "created_at": row["created_at"],
+                "quiz_count": quiz_count,
+                "has_quizzes": quiz_count > 0,
+                "active_quiz_status": row["active_quiz_status"],
+                "chat_log_exchange_count": row["chat_log_exchange_count"],
+            }
+        )
+    return labs
 
 
 @app.get("/api/instructor/lab/{token}")

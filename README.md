@@ -4,6 +4,9 @@ A Socratic teaching assistant for university lab courses, powered by Google Gemi
 
 Instructors upload their lab materials once and get a shareable link with a QR code. Students open that link on any device to chat with the TA — by text or voice. The TA never gives direct answers; it guides students toward understanding through questions and hints, using only the content from the uploaded lab documents.
 
+Instructors can also reopen past lab sessions from the saved-labs index at
+`/instructor/labs`.
+
 ---
 
 ## Table of Contents
@@ -101,6 +104,10 @@ Blocked messages are logged on the server side (visible in the terminal where uv
 Instructors can also opt in to persistent anonymous chat logs when creating a lab. When enabled, the app stores each completed chat exchange with timestamp, anonymous browser session ID, exchange order, student question, TA response, and whether the message was blocked. Failed TA calls are not stored. Logs are available from the instructor result panel as an on-screen view and JSON download.
 
 Instructor dashboard URLs use the same unauthenticated token model as student links. Anyone with a URL like `/instructor/aB3xY9qR` can manage that lab, including chat logs and quiz state. Treat instructor URLs as private classroom-management links.
+
+The saved-labs index at `/instructor/labs` uses the same unauthenticated model.
+Anyone with that URL can view local lab metadata and open clickable instructor
+dashboard or student links for saved sessions.
 
 **API key security**
 
@@ -210,6 +217,15 @@ https://your-machine-name.tail766770.ts.net
 ```
 
 You will see the Lab TA instructor setup page.
+
+To recover a previous lab session, open:
+
+```
+https://your-machine-name.tail766770.ts.net/instructor/labs
+```
+
+The saved-labs page lists local lab sessions with clickable links to each
+instructor dashboard and student URL.
 
 ### Step 2 — Fill in the Lab Details
 
@@ -321,6 +337,9 @@ lab-ta/
 │   ├── instructor.html  Instructor portal — API key form, file upload,
 │   │                    durable dashboard hydration, optional chat logs,
 │   │                    QR code display, copy-link button
+│   ├── instructor_labs.html
+│   │                    Saved-labs index with clickable instructor and
+│   │                    student links
 │   └── student.html     Student chat UI — voice input (Web Speech API),
 │                        text-to-speech, MathJax math rendering
 ├── specs/               Specification-driven development workflow and specs
