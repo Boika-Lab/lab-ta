@@ -33,12 +33,18 @@ future feature areas.
 - Anonymous quiz attempt stats through `GET /quiz/{quiz_id}/stats`.
 - LLM Prompt Externalization completed: prompt templates are stored as Markdown
   files under `prompts/` and loaded once at application startup/import.
+- Centralized Gemini Model Configuration completed: Gemini model names are
+  defined in `llm_config.py` as server-controlled constants for chat,
+  screening, and quiz generation, and the instructor landing page displays the
+  current read-only settings.
 
 ## Current Quality and Process Features
 
 - Markdown specification workflow in `specs/`.
 - Current behavior spec for inherited app behavior.
 - Completed LLM Prompt Externalization spec.
+- Completed Centralized Gemini Model Configuration spec, including landing-page
+  display of current server-controlled model settings.
 - Completed Quiz Completion Feedback spec.
 - Completed Optional Persistent Chat Logs spec, including SQLite upgrade
   behavior, route contracts, and template wiring tests.
@@ -57,11 +63,7 @@ future feature areas.
   hooks, not full browser UI behavior.
 - Live Gemini calls are intentionally excluded from automated tests.
 
-## Future Roadmap
-
-Future work should start as a new or updated spec with explicit acceptance
-criteria. The planned feature areas below should be treated as roadmap items,
-not current behavior.
+## Completed Roadmap Items
 
 ### Centralized Gemini Model Configuration
 
@@ -83,27 +85,27 @@ recommended first step before broader provider abstraction.
   - `CHAT_MODEL`
   - `SCREENING_MODEL`
   - `QUIZ_MODEL`
-- Defaults remain `gemini-2.5-flash` for all three model roles.
-- Allow optional environment variable overrides:
-  - `LAB_TA_CHAT_MODEL`
-  - `LAB_TA_SCREENING_MODEL`
-  - `LAB_TA_QUIZ_MODEL`
+- Values are plain string constants: `gemini-2.5-flash` for chat and quiz
+  generation, and `gemini-2.5-flash-lite` for screening.
 - `main.py` uses `CHAT_MODEL` when creating new lab rows and `SCREENING_MODEL`
   when screening messages.
 - `quiz_engine.py` accepts or imports `QUIZ_MODEL` instead of defining a local
   `_MODEL` constant.
-- The instructor UI continues to show the configured chat model as read-only
-  text. It should not offer a model dropdown in this step.
+- The instructor landing page shows the configured chat, screening, and quiz
+  generation models as read-only text.
+- The instructor UI does not offer a model dropdown in this step.
 - Existing lab rows continue using their stored `model` value for TA chat.
-  Only newly configured labs pick up a changed `LAB_TA_CHAT_MODEL`.
+  Only newly configured labs pick up a changed `CHAT_MODEL`.
 
 #### Acceptance Criteria
 
 - No Gemini model string is duplicated across runtime Python modules.
-- Default behavior is unchanged when no environment variables are set.
-- Setting `LAB_TA_CHAT_MODEL` changes the model stored for newly created labs.
-- Setting `LAB_TA_SCREENING_MODEL` changes the model used by screening.
-- Setting `LAB_TA_QUIZ_MODEL` changes the model used by quiz generation.
+- Default behavior is unchanged.
+- Changing `CHAT_MODEL` changes the model stored for newly created labs.
+- Changing `SCREENING_MODEL` changes the model used by screening.
+- Changing `QUIZ_MODEL` changes the model used by quiz generation.
+- `GET /` renders the current `CHAT_MODEL`, `SCREENING_MODEL`, and
+  `QUIZ_MODEL` values on the instructor landing page.
 - Route tests remain deterministic and do not call Gemini.
 - README, `specs/current-behavior.md`, and `specs/tech-stack.md` are updated
   when the feature is implemented.
@@ -115,6 +117,12 @@ recommended first step before broader provider abstraction.
 - No instructor-facing model picker.
 - No migration of existing lab rows to a new model.
 - No changes to API key storage.
+
+## Future Roadmap
+
+Future work should start as a new or updated spec with explicit acceptance
+criteria. The planned feature areas below should be treated as roadmap items,
+not current behavior.
 
 ### Persistent Instructor Lab Dashboard
 

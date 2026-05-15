@@ -70,6 +70,21 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - The current prompt templates cover Socratic TA chat, prompt-injection
   screening, and prelab quiz generation.
 
+## Gemini Model Configuration
+
+- `llm_config.py` defines server-controlled Gemini model names for TA chat,
+  prompt-injection screening, and prelab quiz generation.
+- `CHAT_MODEL` and `QUIZ_MODEL` are string constants set to
+  `gemini-2.5-flash`; `SCREENING_MODEL` is set to
+  `gemini-2.5-flash-lite`.
+- `POST /api/configure` stores the configured chat model for newly created
+  labs.
+- Existing lab rows continue using their stored `model` value for TA chat.
+- The instructor landing page displays a read-only Model Settings summary with
+  the current chat, prompt-injection screening, and prelab quiz generation
+  model values.
+- The instructor UI does not provide a model picker.
+
 ## Prelab Quiz
 
 - `POST /quiz/generate` creates a draft quiz for a known lab with document text.

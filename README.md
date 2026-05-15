@@ -1,6 +1,6 @@
 # Lab TA
 
-A Socratic teaching assistant for university lab courses, powered by Google Gemini 2.5 Flash.
+A Socratic teaching assistant for university lab courses, powered by Google Gemini with Gemini 2.5 Flash defaults.
 
 Instructors upload their lab materials once and get a shareable link with a QR code. Students open that link on any device to chat with the TA — by text or voice. The TA never gives direct answers; it guides students toward understanding through questions and hints, using only the content from the uploaded lab documents.
 
@@ -50,7 +50,9 @@ Each lab session is independent — you can run multiple labs at the same time (
 | Component | File | Description |
 |-----------|------|-------------|
 | Backend | `main.py` | FastAPI app running on port 8000; handles all API routes and the SQLite database |
+| Model config | `llm_config.py` | Server-controlled Gemini model names for chat, screening, and quiz generation |
 | TA Logic | `ta_engine.py` | Builds the Socratic system prompt and calls the Gemini API |
+| Quiz Logic | `quiz_engine.py` | Generates Gemini-backed multiple-choice prelab quizzes |
 | Document Parsing | `document_parser.py` | Extracts text from uploaded PDF, PPTX, and DOCX files |
 | Instructor UI | `templates/instructor.html` | Web form for lab setup; displays QR code and student link |
 | Student UI | `templates/student.html` | Chat interface with voice input, text-to-speech, and MathJax rendering |
@@ -88,7 +90,7 @@ There is no developer mode, debug mode, or administrator override — these do n
 
 **Layer 2 — Input screening**
 
-Before each student message reaches the main Gemini model, a separate API call using `gemini-2.5-flash` classifies the message. The screener is given a single task: decide whether the message is a legitimate chemistry lab question or an attempt to manipulate the AI, extract system instructions, jailbreak the model, or impersonate an authority figure. If it returns `BLOCK`, the main model is never called and the student sees a neutral refusal message. If the screening call itself fails for any reason, the message is allowed through — a screening error will never interrupt a legitimate student session.
+Before each student message reaches the main Gemini chat model, a separate Gemini screening call classifies the message. The screener is given a single task: decide whether the message is a legitimate chemistry lab question or an attempt to manipulate the AI, extract system instructions, jailbreak the model, or impersonate an authority figure. If it returns `BLOCK`, the main model is never called and the student sees a neutral refusal message. If the screening call itself fails for any reason, the message is allowed through — a screening error will never interrupt a legitimate student session.
 
 **Logging**
 
@@ -100,7 +102,13 @@ Instructors can also opt in to persistent anonymous chat logs when creating a la
 
 Treat your Google API key as a password. It is submitted through the instructor portal, stored in the local SQLite database, and used server-side for every API call — students never see it. Do not share it, do not commit it to version control, and regenerate it immediately if you believe it has been exposed. You can manage and revoke keys at [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 
-> **Note on discontinued models:** The `gemini-2.0-flash` and `gemini-2.0-flash-lite` model names have been discontinued and are no longer supported by the Gemini API. This app uses `gemini-2.5-flash` for both the main TA and the input screener. If you encounter errors referencing a 2.0 model name in an older database row, create a new lab session — new sessions always use the current model.
+**Server-controlled Gemini models**
+
+The app uses `gemini-2.5-flash` for TA chat and quiz generation, and `gemini-2.5-flash-lite` for prompt-injection screening. These server-controlled model names are defined in `llm_config.py`.
+
+The instructor setup form does not include a model picker. Newly created labs store the configured chat model at creation time, and existing lab rows continue using their stored model value.
+
+> **Note on discontinued models:** The `gemini-2.0-flash` and `gemini-2.0-flash-lite` model names have been discontinued and are no longer supported by the Gemini API. If you encounter errors referencing a discontinued model name in an older database row, create a new lab session so it stores the current configured chat model.
 
 ---
 
@@ -292,8 +300,10 @@ All mathematical and chemical notation in TA responses uses LaTeX formatting so 
 lab-ta/
 ├── main.py              FastAPI app — all API routes, SQLite database
 │                        setup, request handling
+├── llm_config.py        Server-controlled Gemini model role configuration
 ├── prompt_loader.py     Loads and validates Markdown prompt templates
 ├── ta_engine.py         Gemini API calls + Socratic system prompt rendering
+├── quiz_engine.py       Gemini prelab quiz generation
 ├── document_parser.py   Text extraction from uploaded PDF, PPTX, and DOCX
 │                        files; returns plain text for storage in the DB
 ├── prompts/             Markdown prompt templates for TA chat, screening,

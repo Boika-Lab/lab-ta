@@ -7,10 +7,8 @@ import json
 from google import genai
 from google.genai import types
 
+import llm_config
 from prompt_loader import PROMPTS
-
-
-_MODEL = "gemini-2.5-flash"
 
 
 async def generate_quiz(api_key: str, document_text: str, n_questions: int) -> list[dict]:
@@ -21,7 +19,7 @@ async def generate_quiz(api_key: str, document_text: str, n_questions: int) -> l
     )
 
     response = await client.aio.models.generate_content(
-        model=_MODEL,
+        model=llm_config.QUIZ_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(temperature=0.7),
     )

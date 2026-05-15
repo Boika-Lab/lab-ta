@@ -20,6 +20,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
 ## Current Specs
 
 - `current-behavior.md` documents the inherited app behavior.
+- `centralized-gemini-model-configuration.md` documents server-controlled
+  Gemini model role configuration.
 - `llm-prompt-externalization.md` documents the externalized prompt template
   behavior.
 - `persistent-chat-logs.md` documents opt-in anonymous chat log persistence and

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sqlite3
 import tempfile
@@ -14,6 +15,8 @@ os.environ.setdefault(
 )
 
 import main  # noqa: E402
+import llm_config  # noqa: E402
+import quiz_engine  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -42,7 +45,7 @@ def insert_lab(
                 "Electrochemistry",
                 content,
                 "test-key",
-                main.MODEL,
+                llm_config.CHAT_MODEL,
                 "2026-05-15T00:00:00",
                 1 if chat_logging_enabled else 0,
             ),
@@ -107,8 +110,21 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     assert row["lab_name"] == "Kinetics"
     assert "parsed manual.docx: hello" in row["lab_content"]
     assert row["api_key"] == "test-key"
-    assert row["model"] == main.MODEL
+    assert row["model"] == llm_config.CHAT_MODEL
     assert row["chat_logging_enabled"] == 0
+
+
+def test_configure_stores_configured_chat_model(client):
+    response = client.post(
+        "/api/configure",
+        data={"api_key": "test-key", "lab_name": "Kinetics"},
+    )
+
+    assert response.status_code == 200
+    token = response.json()["token"]
+    with main.get_db() as conn:
+        row = conn.execute("SELECT model FROM labs WHERE token = ?", (token,)).fetchone()
+    assert row["model"] == llm_config.CHAT_MODEL
 
 
 def test_configure_checked_stores_chat_logging_enabled(client):
@@ -186,7 +202,10 @@ def test_lab_info_returns_contract_and_404(client):
 
     response = client.get(f"/api/lab/{token}")
     assert response.status_code == 200
-    assert response.json() == {"lab_name": "Electrochemistry", "model": main.MODEL}
+    assert response.json() == {
+        "lab_name": "Electrochemistry",
+        "model": llm_config.CHAT_MODEL,
+    }
 
     missing = client.get("/api/lab/missing")
     assert missing.status_code == 404
@@ -249,7 +268,7 @@ def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"response": "What safety step comes first?"}
     assert captured["api_key"] == "test-key"
-    assert captured["model"] == main.MODEL
+    assert captured["model"] == llm_config.CHAT_MODEL
     assert "Electrochemistry" in captured["system_prompt"]
     assert "Use goggles." in captured["system_prompt"]
     assert captured["history"] == [
@@ -260,6 +279,59 @@ def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
     with main.get_db() as conn:
         count = conn.execute("SELECT COUNT(*) AS n FROM chat_logs").fetchone()["n"]
     assert count == 0
+
+
+def test_screen_message_uses_configured_screening_model(monkeypatch):
+    captured = {}
+
+    class FakeModels:
+        async def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return type("Response", (), {"text": "PASS"})()
+
+    class FakeClient:
+        def __init__(self, api_key):
+            captured["api_key"] = api_key
+            self.aio = type("FakeAio", (), {"models": FakeModels()})()
+
+    monkeypatch.setattr(main.genai, "Client", FakeClient)
+
+    passed = asyncio.run(main.screen_message("test-key", "abc12345", "Can I start?"))
+
+    assert passed is True
+    assert captured["api_key"] == "test-key"
+    assert captured["model"] == llm_config.SCREENING_MODEL
+
+
+def test_generate_quiz_uses_configured_quiz_model(monkeypatch):
+    captured = {}
+
+    class FakeModels:
+        async def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return type(
+                "Response",
+                (),
+                {
+                    "text": (
+                        '[{"question":"Q?","choices":{"A":"A","B":"B","C":"C","D":"D"},'
+                        '"correct":"A","explanation":"Because."}]'
+                    )
+                },
+            )()
+
+    class FakeClient:
+        def __init__(self, api_key):
+            captured["api_key"] = api_key
+            self.aio = type("FakeAio", (), {"models": FakeModels()})()
+
+    monkeypatch.setattr(quiz_engine.genai, "Client", FakeClient)
+
+    questions = asyncio.run(quiz_engine.generate_quiz("test-key", "Lab notes", 3))
+
+    assert questions[0]["question"] == "Q?"
+    assert captured["api_key"] == "test-key"
+    assert captured["model"] == llm_config.QUIZ_MODEL
 
 
 def test_chat_logging_enabled_stores_normal_exchanges_by_session(client, monkeypatch):
@@ -598,6 +670,27 @@ def test_instructor_chat_logging_checkbox_exists():
     assert "function loadChatLogs()" in template
     assert "function downloadChatLogs()" in template
     assert "/api/chat-logs/${currentToken}" in template
+
+
+def test_instructor_landing_page_shows_configured_model_settings(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Model Settings" in response.text
+    assert "TA chat model" in response.text
+    assert "Prompt-injection screening model" in response.text
+    assert "Prelab quiz generation model" in response.text
+    assert llm_config.CHAT_MODEL in response.text
+    assert llm_config.SCREENING_MODEL in response.text
+    assert llm_config.QUIZ_MODEL in response.text
+
+    template = Path("templates/instructor.html").read_text()
+    assert "{{CHAT_MODEL}}" in template
+    assert "{{SCREENING_MODEL}}" in template
+    assert "{{QUIZ_MODEL}}" in template
+    assert llm_config.CHAT_MODEL not in template
+    assert llm_config.SCREENING_MODEL not in template
+    assert llm_config.QUIZ_MODEL not in template
 
 
 def test_student_chat_session_id_is_stored_per_token_and_sent():

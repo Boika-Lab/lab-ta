@@ -15,6 +15,7 @@ not a target architecture.
 
 - `main.py`: FastAPI app, route handlers, SQLite schema initialization, chat log
   persistence, and quiz persistence.
+- `llm_config.py`: server-controlled Gemini model role constants.
 - `prompt_loader.py`: startup/import-time loading, validation, and rendering of
   Markdown prompt templates from `prompts/`.
 - `ta_engine.py`: Socratic system prompt rendering and Gemini chat calls.
@@ -35,8 +36,9 @@ not a target architecture.
 
 ## External Services
 
-- Google Gemini 2.5 Flash via the `google-genai` SDK for TA responses, message
-  screening, and quiz generation.
+- Google Gemini via the `google-genai` SDK for TA responses, message screening,
+  and quiz generation. TA responses and quiz generation currently use
+  `gemini-2.5-flash`; message screening uses `gemini-2.5-flash-lite`.
 - Tailscale Funnel for public HTTPS access to the local server.
 - MathJax loaded from a CDN for mathematical and chemical notation rendering.
 - QR code image generation is currently loaded from a third-party QR service in
@@ -60,3 +62,7 @@ not a target architecture.
 - Static template tests verify important UI wiring such as chat logging controls
   and browser-local session IDs.
 - The current verification command is `python -m pytest`.
+
+## Environment Variables
+
+- `LAB_TA_DB_PATH`: override the SQLite database path, primarily for tests.

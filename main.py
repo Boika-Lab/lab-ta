@@ -7,6 +7,7 @@ import os
 import random
 import sqlite3
 import string
+from html import escape
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
@@ -18,9 +19,10 @@ from google.genai import types
 from pydantic import BaseModel
 
 from document_parser import parse_uploaded_file
+import llm_config
 from prompt_loader import PROMPTS
-from ta_engine import build_system_prompt, get_ta_response
 from quiz_engine import generate_quiz
+from ta_engine import build_system_prompt, get_ta_response
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -120,6 +122,18 @@ def load_html(name: str) -> str:
     return (TEMPLATES_DIR / name).read_text(encoding="utf-8")
 
 
+def render_instructor_html() -> str:
+    html = load_html("instructor.html")
+    replacements = {
+        "{{CHAT_MODEL}}": llm_config.CHAT_MODEL,
+        "{{SCREENING_MODEL}}": llm_config.SCREENING_MODEL,
+        "{{QUIZ_MODEL}}": llm_config.QUIZ_MODEL,
+    }
+    for placeholder, value in replacements.items():
+        html = html.replace(placeholder, escape(value))
+    return html
+
+
 def persist_chat_log(
     token: str,
     session_id: Optional[str],
@@ -190,17 +204,12 @@ class SubmitQuizRequest(BaseModel):
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def instructor_portal() -> HTMLResponse:
-    return HTMLResponse(content=load_html("instructor.html"))
+    return HTMLResponse(content=render_instructor_html())
 
 
 @app.get("/lab/{token}", response_class=HTMLResponse)
 async def student_chat(token: str) -> HTMLResponse:
     return HTMLResponse(content=load_html("student.html"))
-
-
-MODEL = "gemini-2.5-flash"
-
-SCREENING_MODEL = "gemini-2.5-flash"
 
 
 async def screen_message(api_key: str, token: str, message: str) -> bool:
@@ -213,7 +222,7 @@ async def screen_message(api_key: str, token: str, message: str) -> bool:
         client = genai.Client(api_key=api_key)
         prompt = PROMPTS["screening"].render(message=message)
         response = await client.aio.models.generate_content(
-            model=SCREENING_MODEL,
+            model=llm_config.SCREENING_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0),
         )
@@ -260,7 +269,7 @@ async def configure(
                 lab_name,
                 lab_content,
                 api_key,
-                MODEL,
+                llm_config.CHAT_MODEL,
                 datetime.now(UTC).isoformat(),
                 1 if chat_logging_enabled else 0,
             ),
