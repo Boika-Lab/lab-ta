@@ -13,8 +13,8 @@ not a target architecture.
 
 ## Backend Modules
 
-- `main.py`: FastAPI app, route handlers, SQLite schema initialization, and quiz
-  persistence.
+- `main.py`: FastAPI app, route handlers, SQLite schema initialization, chat log
+  persistence, and quiz persistence.
 - `prompt_loader.py`: startup/import-time loading, validation, and rendering of
   Markdown prompt templates from `prompts/`.
 - `ta_engine.py`: Socratic system prompt rendering and Gemini chat calls.
@@ -24,13 +24,14 @@ not a target architecture.
 ## Frontend
 
 - Server-rendered static HTML templates in `templates/`.
-- `templates/instructor.html`: instructor setup, file upload, student link, QR
-  code, quiz generation, quiz publishing, and stats UI.
+- `templates/instructor.html`: instructor setup, file upload, optional chat log
+  checkbox, student link, QR code, chat log export, quiz generation, quiz
+  publishing, and stats UI.
 - `templates/student.html`: student chat UI, voice input, text-to-speech,
-  MathJax rendering, prelab quiz gate, retry flow, and local quiz progress
-  storage.
+  MathJax rendering, anonymous browser-local chat session ID, prelab quiz gate,
+  retry flow, and local quiz progress storage.
 - Browser APIs used by the student UI include Web Speech recognition,
-  speech synthesis, `localStorage`, and standard `fetch`.
+  speech synthesis, `crypto.randomUUID`, `localStorage`, and standard `fetch`.
 
 ## External Services
 
@@ -56,4 +57,6 @@ not a target architecture.
 
 - Pytest contract tests live in `tests/`.
 - Tests mock Gemini-facing functions and use isolated SQLite databases.
+- Static template tests verify important UI wiring such as chat logging controls
+  and browser-local session IDs.
 - The current verification command is `python -m pytest`.

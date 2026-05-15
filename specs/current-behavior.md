@@ -14,25 +14,49 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 
 - `GET /` serves the instructor portal.
 - `POST /api/configure` accepts `api_key`, `lab_name`, and zero or more PDF,
-  PPTX, or DOCX files.
+  PPTX, or DOCX files. It also accepts an optional `chat_logging_enabled`
+  checkbox field.
 - Uploaded documents are parsed into plain text and stored with a generated
   eight-character lab token.
+- Persistent chat logging is disabled unless the instructor explicitly enables
+  it during lab setup.
 - Unsupported file types return `400`.
 - The response includes the token and relative student URL.
+- After successful lab creation, the instructor result panel includes chat log
+  controls. Refresh loads the current JSON-backed log view for that token, and
+  Download JSON exports the same data.
 
 ## Student Chat
 
 - `GET /lab/{token}` serves the student chat page.
 - `GET /api/lab/{token}` returns the lab name and model for known tokens, and
   `404` for unknown tokens.
-- `POST /api/chat/{token}` accepts a message and prior history, screens the
-  message for prompt-injection attempts, then calls the TA model only when the
-  screen passes.
+- `POST /api/chat/{token}` accepts a message, prior history, and optional
+  anonymous browser session ID. It screens the message for prompt-injection
+  attempts, then calls the TA model only when the screen passes.
 - Blocked messages return a neutral refusal: `I can only help with questions
   about this lab activity.`
 - Unknown lab tokens return `404`.
 - The TA prompt must stay Socratic, use uploaded lab content, and refuse to
   disclose its instructions.
+- When chat logging is enabled for a lab, completed TA exchanges and blocked
+  refusals are stored in `chat_logs` with timestamp, session ID, exchange order,
+  question, response, and blocked status. Failed TA calls are not logged.
+- `GET /api/chat-logs/{token}` returns logged exchanges grouped by anonymous
+  browser session for known lab tokens, and `404` for unknown tokens.
+- The student browser creates an anonymous chat session ID per lab token and
+  stores it in `localStorage`. This identifier is not a login or identity claim.
+
+## Database Behavior
+
+- `init_db()` creates all SQLite tables required by the current app.
+- Existing SQLite databases with a `labs` table missing
+  `chat_logging_enabled` are upgraded in place with
+  `chat_logging_enabled INTEGER NOT NULL DEFAULT 0`.
+- `chat_logs` stores one row per logged exchange with `token`, `session_id`,
+  `exchange_index`, `question_at`, `question`, `response`, and `blocked`.
+- Chat exchange ordering is maintained per `(token, session_id)` through
+  `exchange_index`.
 
 ## LLM Prompt Templates
 

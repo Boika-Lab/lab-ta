@@ -22,6 +22,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
 - `current-behavior.md` documents the inherited app behavior.
 - `llm-prompt-externalization.md` documents the externalized prompt template
   behavior.
+- `persistent-chat-logs.md` documents opt-in anonymous chat log persistence and
+  export behavior.
 - `template.md` is the starting point for future feature or change specs.
 
 ## Test Policy

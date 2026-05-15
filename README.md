@@ -92,7 +92,9 @@ Before each student message reaches the main Gemini model, a separate API call u
 
 **Logging**
 
-Blocked messages are logged on the server side (visible in the terminal where uvicorn is running) with the session token and the exact message text. This allows instructors to review attempted misuse after the fact.
+Blocked messages are logged on the server side (visible in the terminal where uvicorn is running) with the session token and the exact message text.
+
+Instructors can also opt in to persistent anonymous chat logs when creating a lab. When enabled, the app stores each completed chat exchange with timestamp, anonymous browser session ID, exchange order, student question, TA response, and whether the message was blocked. Failed TA calls are not stored. Logs are available from the instructor result panel as an on-screen view and JSON download.
 
 **API key security**
 
@@ -204,6 +206,7 @@ You will see the Lab TA instructor setup page.
 | **Google API Key** | Paste your API key from [Google AI Studio](https://aistudio.google.com/apikey). It starts with `AIza...`. This is stored securely on the server and never shown to students. |
 | **Lab Name** | A short descriptive name, e.g. `Electrochemistry Lab` or `Enzyme Kinetics`. This appears in the student chat header. |
 | **Lab Documents** | Upload one or more files in **PDF, PPTX, or DOCX** format. You can select multiple files at once. The TA will base all its guidance exclusively on the content of these files. |
+| **Save anonymous chat logs** | Optional. When checked, completed student chat exchanges are stored locally and can be refreshed or downloaded as JSON from the instructor page. |
 
 ### Step 3 — Generate the Student Link
 
@@ -213,6 +216,7 @@ Click **Generate Student TA Link**. After a few seconds you will see:
   `https://your-machine-name.tail766770.ts.net/lab/aB3xY9qR`
 - A **QR code** students can scan with their phone
 - A **Copy Link** button to copy the URL to your clipboard
+- Optional **Chat Logs** controls if anonymous logging was enabled for this lab
 
 ### Step 4 — Share with Students
 
@@ -296,14 +300,14 @@ lab-ta/
 │                        and quiz generation
 ├── templates/
 │   ├── instructor.html  Instructor portal — API key form, file upload,
-│   │                    QR code display, copy-link button
+│   │                    optional chat logs, QR code display, copy-link button
 │   └── student.html     Student chat UI — voice input (Web Speech API),
 │                        text-to-speech, MathJax math rendering
 ├── specs/               Specification-driven development workflow and specs
 ├── requirements.txt     Python package dependencies
 ├── lab_ta.db            SQLite database (auto-created on first run);
-│                        stores lab name, content, API key, and model
-│                        per session token
+│                        stores lab name, content, API key, model, optional
+│                        chat logs, and quiz data per session token
 ├── venv/                Python virtual environment (not committed to git)
 └── README.md            This file
 ```

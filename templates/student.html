@@ -505,6 +505,20 @@
   <script>
     // ── Token from URL ─────────────────────────────────────────────────────────
     const token = window.location.pathname.split('/').filter(Boolean).pop();
+    const LS_CHAT_SESSION = `labta_chat_session_${token}`;
+
+    function getChatSessionId() {
+      let sessionId = localStorage.getItem(LS_CHAT_SESSION);
+      if (!sessionId) {
+        sessionId = window.crypto?.randomUUID
+          ? window.crypto.randomUUID()
+          : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(LS_CHAT_SESSION, sessionId);
+      }
+      return sessionId;
+    }
+
+    const chatSessionId = getChatSessionId();
 
     // ── State ──────────────────────────────────────────────────────────────────
     const history = [];   // [{role: "user"|"model", text: "..."}]
@@ -618,7 +632,11 @@
         const res = await fetch(`/api/chat/${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, history: [...history] }),
+          body: JSON.stringify({
+            message: text,
+            history: [...history],
+            session_id: chatSessionId,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Server error');

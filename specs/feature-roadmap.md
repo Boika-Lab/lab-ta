@@ -14,6 +14,11 @@ future feature areas.
 - Lab metadata lookup through `GET /api/lab/{token}`.
 - Socratic chat through `POST /api/chat/{token}`.
 - Prompt-injection screening before TA response generation.
+- Optional Persistent Chat Logs completed: instructors can enable anonymous
+  per-lab chat persistence from the setup form, then refresh or download logs
+  from the instructor result panel.
+- Anonymous chat log export through `GET /api/chat-logs/{token}` returns
+  sessions grouped by browser-local student session ID.
 - Voice input and text-to-speech in the student browser UI.
 - MathJax rendering for mathematical and chemical notation.
 - Prelab quiz generation through `POST /quiz/generate`.
@@ -35,6 +40,8 @@ future feature areas.
 - Current behavior spec for inherited app behavior.
 - Completed LLM Prompt Externalization spec.
 - Completed Quiz Completion Feedback spec.
+- Completed Optional Persistent Chat Logs spec, including SQLite upgrade
+  behavior, route contracts, and template wiring tests.
 - Reusable spec template for future changes.
 - Pytest route-level contract tests.
 - Test database isolation through `LAB_TA_DB_PATH`.
@@ -46,7 +53,8 @@ future feature areas.
 - The instructor and student pages are plain HTML/CSS/JavaScript templates.
 - Database schema setup is handled with `CREATE TABLE IF NOT EXISTS`; there is
   no migration framework.
-- Automated tests cover backend route contracts, not browser UI behavior.
+- Automated tests cover backend route contracts and lightweight static template
+  hooks, not full browser UI behavior.
 - Live Gemini calls are intentionally excluded from automated tests.
 
 ## Future Roadmap
@@ -64,17 +72,6 @@ not current behavior.
 
 - Add LiteLLM as the LLM integration layer so the app can switch to other LLM
   services through configuration rather than provider-specific code changes.
-
-### Optional Persistent Chat Logs
-
-- Add an instructor-facing checkbox to enable persistent database storage of
-  student chat sessions.
-- When enabled, store each chat exchange with the date and time of the student
-  question, the question text, and the model response text.
-- Store chat records in an ordered form that allows the full sequence of a chat
-  session to be extracted as a complete log.
-- Keep persistent chat logging disabled unless the instructor explicitly turns
-  it on.
 
 ### Security Audit
 

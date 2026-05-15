@@ -69,6 +69,32 @@
       outline: none;
       border-color: #2E86AB;
     }
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      margin-top: 1.25rem;
+      font-size: 0.9rem;
+      color: #333;
+      line-height: 1.45;
+    }
+    .checkbox-row input {
+      margin-top: 0.18rem;
+      accent-color: #2E86AB;
+      flex-shrink: 0;
+    }
+    .checkbox-row label {
+      margin: 0;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .checkbox-row span {
+      display: block;
+      color: #666;
+      font-size: 0.82rem;
+      font-weight: 400;
+      margin-top: 0.15rem;
+    }
 
     .file-label {
       display: flex;
@@ -235,6 +261,24 @@
       padding-top: 1rem;
       margin-top: 0.5rem;
     }
+    .logs-panel {
+      margin-top: 1.5rem;
+      border-top: 1px solid #eee;
+      padding-top: 1.25rem;
+    }
+    .logs-output {
+      margin-top: 0.85rem;
+      background: #f7f9fc;
+      border: 1px solid #e0e5ec;
+      border-radius: 8px;
+      padding: 0.85rem;
+      max-height: 320px;
+      overflow: auto;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      color: #333;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
@@ -266,6 +310,14 @@
       <input type="file" id="file-input" name="files" multiple accept=".pdf,.pptx,.docx" />
       <ul id="file-list"></ul>
 
+      <div class="checkbox-row">
+        <input type="checkbox" id="chat-logging-enabled" name="chat_logging_enabled" />
+        <label for="chat-logging-enabled">
+          Save anonymous chat logs
+          <span>Stores each student question and TA response for this lab session.</span>
+        </label>
+      </div>
+
       <button type="submit" class="btn-primary" id="submit-btn">Generate Student TA Link</button>
     </form>
 
@@ -290,6 +342,17 @@
       <p class="hint-text">
         Share this link or QR code with your students. Each student opens it on their device — no login or installation required.
       </p>
+
+      <div class="logs-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;margin-bottom:0.85rem;">
+          <span style="font-size:1rem;font-weight:700;color:#1a1a2e;">Chat Logs</span>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button class="btn-secondary" style="padding:0.4rem 0.85rem;min-width:0;font-size:0.85rem;" onclick="loadChatLogs()">Refresh</button>
+            <button class="btn-secondary" style="padding:0.4rem 0.85rem;min-width:0;font-size:0.85rem;" onclick="downloadChatLogs()">Download JSON</button>
+          </div>
+        </div>
+        <div id="logs-output" class="logs-output">No logs loaded yet.</div>
+      </div>
 
       <!-- ── Prelab Quiz ─────────────────────────────── -->
       <div id="quiz-section" style="margin-top:1.5rem;">
@@ -353,6 +416,7 @@
 
     let studentUrl = '';
     let currentToken = '';
+    let lastChatLogs = null;
 
     document.getElementById('setup-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -375,6 +439,7 @@
 
         studentUrl = window.location.origin + json.student_url;
         currentToken = json.token;
+        lastChatLogs = null;
 
         document.getElementById('success-label').textContent =
           `Lab "${form.lab_name.value}" is ready!`;
@@ -383,6 +448,8 @@
           `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(studentUrl)}&size=200x200`;
 
         document.getElementById('result').style.display = 'block';
+        document.getElementById('logs-output').textContent =
+          'Use Refresh to load anonymous chat logs for this lab.';
       } catch (err) {
         form.style.display = 'block';
         const errEl = document.getElementById('error-msg');
@@ -403,6 +470,57 @@
 
     function openLink() {
       window.open(studentUrl, '_blank');
+    }
+
+    async function loadChatLogs() {
+      if (!currentToken) return;
+      const out = document.getElementById('logs-output');
+      out.textContent = 'Loading...';
+      try {
+        const res = await fetch(`/api/chat-logs/${currentToken}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+        lastChatLogs = data;
+        if (!data.chat_logging_enabled) {
+          out.textContent = 'Chat logging is disabled for this lab.';
+          return;
+        }
+        if (data.sessions.length === 0) {
+          out.textContent = 'No chat exchanges have been logged yet.';
+          return;
+        }
+        const lines = [];
+        data.sessions.forEach(session => {
+          lines.push(`Session ${session.session_id}`);
+          session.exchanges.forEach(ex => {
+            lines.push(`  #${ex.exchange_index} ${ex.question_at}${ex.blocked ? ' [blocked]' : ''}`);
+            lines.push(`  Student: ${ex.question}`);
+            lines.push(`  TA: ${ex.response}`);
+          });
+          lines.push('');
+        });
+        out.textContent = lines.join('\n').trim();
+      } catch (err) {
+        lastChatLogs = null;
+        out.textContent = 'Error loading logs: ' + err.message;
+      }
+    }
+
+    async function downloadChatLogs() {
+      if (!currentToken) return;
+      if (!lastChatLogs) await loadChatLogs();
+      if (!lastChatLogs) return;
+      const blob = new Blob([JSON.stringify(lastChatLogs, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lab-ta-chat-logs-${currentToken}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     }
 
     // ── Quiz management ────────────────────────────────────────────────────────

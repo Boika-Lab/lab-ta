@@ -9,6 +9,7 @@ import sqlite3
 import string
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
@@ -49,6 +50,13 @@ def init_db() -> None:
                 created_at TIMESTAMP
             )
         """)
+        lab_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(labs)").fetchall()
+        }
+        if "chat_logging_enabled" not in lab_columns:
+            conn.execute(
+                "ALTER TABLE labs ADD COLUMN chat_logging_enabled INTEGER NOT NULL DEFAULT 0"
+            )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS quizzes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,6 +89,22 @@ def init_db() -> None:
                 FOREIGN KEY (question_id) REFERENCES quiz_questions(id)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chat_logs (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                token          TEXT NOT NULL,
+                session_id     TEXT NOT NULL,
+                exchange_index INTEGER NOT NULL,
+                question_at    TIMESTAMP NOT NULL,
+                question       TEXT NOT NULL,
+                response       TEXT NOT NULL,
+                blocked        INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chat_logs_token_session_exchange
+            ON chat_logs (token, session_id, exchange_index)
+        """)
         conn.commit()
 
 
@@ -96,10 +120,47 @@ def load_html(name: str) -> str:
     return (TEMPLATES_DIR / name).read_text(encoding="utf-8")
 
 
+def persist_chat_log(
+    token: str,
+    session_id: Optional[str],
+    question: str,
+    response: str,
+    blocked: bool,
+) -> None:
+    normalized_session_id = (session_id or "").strip() or "unknown"
+    with get_db() as conn:
+        row = conn.execute(
+            """
+            SELECT COALESCE(MAX(exchange_index), 0) + 1 AS next_index
+            FROM chat_logs
+            WHERE token = ? AND session_id = ?
+            """,
+            (token, normalized_session_id),
+        ).fetchone()
+        conn.execute(
+            """
+            INSERT INTO chat_logs
+                (token, session_id, exchange_index, question_at, question, response, blocked)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                token,
+                normalized_session_id,
+                row["next_index"],
+                datetime.now(UTC).isoformat(),
+                question,
+                response,
+                1 if blocked else 0,
+            ),
+        )
+        conn.commit()
+
+
 # ── Request models ────────────────────────────────────────────────────────────
 class ChatRequest(BaseModel):
     message: str
     history: list[dict]
+    session_id: Optional[str] = None
 
 
 class GenerateQuizRequest(BaseModel):
@@ -171,6 +232,7 @@ async def screen_message(api_key: str, token: str, message: str) -> bool:
 async def configure(
     api_key: str = Form(...),
     lab_name: str = Form(...),
+    chat_logging_enabled: bool = Form(False),
     files: list[UploadFile] = File(default=[]),
 ):
     parts: list[str] = []
@@ -190,9 +252,18 @@ async def configure(
         while conn.execute("SELECT 1 FROM labs WHERE token = ?", (token,)).fetchone():
             token = generate_token()
         conn.execute(
-            "INSERT INTO labs (token, lab_name, lab_content, api_key, model, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (token, lab_name, lab_content, api_key, MODEL, datetime.now(UTC).isoformat()),
+            "INSERT INTO labs "
+            "(token, lab_name, lab_content, api_key, model, created_at, chat_logging_enabled) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                token,
+                lab_name,
+                lab_content,
+                api_key,
+                MODEL,
+                datetime.now(UTC).isoformat(),
+                1 if chat_logging_enabled else 0,
+            ),
         )
         conn.commit()
 
@@ -214,7 +285,11 @@ async def get_lab_info(token: str):
 async def chat(token: str, req: ChatRequest):
     with get_db() as conn:
         row = conn.execute(
-            "SELECT lab_name, lab_content, api_key, model FROM labs WHERE token = ?",
+            """
+            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled
+            FROM labs
+            WHERE token = ?
+            """,
             (token,),
         ).fetchone()
     if not row:
@@ -225,7 +300,10 @@ async def chat(token: str, req: ChatRequest):
 
     passed = await screen_message(row["api_key"], token, req.message)
     if not passed:
-        return {"response": "I can only help with questions about this lab activity."}
+        refusal = "I can only help with questions about this lab activity."
+        if row["chat_logging_enabled"]:
+            persist_chat_log(token, req.session_id, req.message, refusal, blocked=True)
+        return {"response": refusal}
 
     try:
         ta_response = await get_ta_response(
@@ -237,7 +315,52 @@ async def chat(token: str, req: ChatRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    if row["chat_logging_enabled"]:
+        persist_chat_log(token, req.session_id, req.message, ta_response, blocked=False)
+
     return {"response": ta_response}
+
+
+@app.get("/api/chat-logs/{token}")
+async def chat_logs(token: str):
+    with get_db() as conn:
+        lab = conn.execute(
+            "SELECT lab_name, chat_logging_enabled FROM labs WHERE token = ?", (token,)
+        ).fetchone()
+        if not lab:
+            raise HTTPException(status_code=404, detail="Lab not found")
+        rows = conn.execute(
+            """
+            SELECT id, session_id, exchange_index, question_at, question, response, blocked
+            FROM chat_logs
+            WHERE token = ?
+            ORDER BY session_id, exchange_index
+            """,
+            (token,),
+        ).fetchall()
+
+    sessions_by_id: dict[str, dict] = {}
+    for row in rows:
+        session = sessions_by_id.setdefault(
+            row["session_id"], {"session_id": row["session_id"], "exchanges": []}
+        )
+        session["exchanges"].append(
+            {
+                "id": row["id"],
+                "exchange_index": row["exchange_index"],
+                "question_at": row["question_at"],
+                "question": row["question"],
+                "response": row["response"],
+                "blocked": bool(row["blocked"]),
+            }
+        )
+
+    return {
+        "token": token,
+        "lab_name": lab["lab_name"],
+        "chat_logging_enabled": bool(lab["chat_logging_enabled"]),
+        "sessions": list(sessions_by_id.values()),
+    }
 
 
 # ── Quiz helpers ──────────────────────────────────────────────────────────────
