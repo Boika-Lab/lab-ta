@@ -1,0 +1,29 @@
+# Lab TA Specification Workflow
+
+This project uses a pragmatic specification-driven development workflow.
+
+Specs are the source of truth for meaningful behavior changes. Before changing
+application behavior, update or add a spec that describes the goal, public
+interfaces, acceptance criteria, and tests that prove the behavior works.
+
+## Workflow
+
+1. Write or update a spec in `specs/`.
+2. Capture current behavior before changing brown-field code.
+3. Add or update automated tests for the acceptance criteria.
+4. Implement the smallest code change that satisfies the spec.
+5. Run `python -m pytest` before handing off or merging.
+
+Small typo fixes, comments, and non-behavioral cleanup do not need a dedicated
+spec. Any API, database, prompt, workflow, or user-visible behavior change does.
+
+## Current Specs
+
+- `current-behavior.md` documents the inherited app behavior.
+- `template.md` is the starting point for future feature or change specs.
+
+## Test Policy
+
+Automated tests must not call Gemini or require a real Google API key. Mock
+Gemini-facing functions and verify app behavior through public routes where
+possible.

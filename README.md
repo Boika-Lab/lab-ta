@@ -297,6 +297,8 @@ lab-ta/
 │   │                    QR code display, copy-link button
 │   └── student.html     Student chat UI — voice input (Web Speech API),
 │                        text-to-speech, MathJax math rendering
+├── specs/               Specification-driven development workflow,
+│                        current behavior spec, and spec template
 ├── requirements.txt     Python package dependencies
 ├── lab_ta.db            SQLite database (auto-created on first run);
 │                        stores lab name, content, API key, and model
@@ -304,6 +306,20 @@ lab-ta/
 ├── venv/                Python virtual environment (not committed to git)
 └── README.md            This file
 ```
+
+---
+
+## Development Workflow
+
+Lab TA uses a pragmatic specification-driven development workflow:
+
+1. Update or add a Markdown spec in `specs/` for behavior changes.
+2. Add or update automated tests for the spec acceptance criteria.
+3. Implement the smallest change that satisfies the spec.
+4. Run `python -m pytest` before handing off or merging.
+
+Gemini calls must be mocked in automated tests. Tests should exercise public
+routes and use isolated local data.
 
 ---
 

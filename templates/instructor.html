@@ -439,7 +439,13 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: currentToken, n_questions: n }),
         });
-        const data = await res.json();
+        const raw = await res.text();
+        let data = {};
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch {
+          data = { detail: raw || 'Server error' };
+        }
         if (!res.ok) throw new Error(data.detail || 'Server error');
 
         currentQuizId = data.quiz_id;

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import os
 import random
 import sqlite3
 import string
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -23,7 +23,7 @@ from quiz_engine import generate_quiz
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
-DB_PATH = BASE_DIR / "lab_ta.db"
+DB_PATH = Path(os.environ.get("LAB_TA_DB_PATH", BASE_DIR / "lab_ta.db"))
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Lab TA")
@@ -198,7 +198,7 @@ async def configure(
         conn.execute(
             "INSERT INTO labs (token, lab_name, lab_content, api_key, model, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (token, lab_name, lab_content, api_key, MODEL, datetime.utcnow().isoformat()),
+            (token, lab_name, lab_content, api_key, MODEL, datetime.now(UTC).isoformat()),
         )
         conn.commit()
 
@@ -229,21 +229,19 @@ async def chat(token: str, req: ChatRequest):
     system_prompt = build_system_prompt(row["lab_name"], row["lab_content"])
     full_history = req.history + [{"role": "user", "text": req.message}]
 
+    passed = await screen_message(row["api_key"], token, req.message)
+    if not passed:
+        return {"response": "I can only help with questions about this lab activity."}
+
     try:
-        passed, ta_response = await asyncio.gather(
-            screen_message(row["api_key"], token, req.message),
-            get_ta_response(
-                api_key=row["api_key"],
-                model=row["model"],
-                system_prompt=system_prompt,
-                history=full_history,
-            ),
+        ta_response = await get_ta_response(
+            api_key=row["api_key"],
+            model=row["model"],
+            system_prompt=system_prompt,
+            history=full_history,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    if not passed:
-        return {"response": "I can only help with questions about this lab activity."}
 
     return {"response": ta_response}
 
@@ -292,11 +290,21 @@ async def quiz_generate(req: GenerateQuizRequest):
         questions = await generate_quiz(row["api_key"], row["lab_content"], req.n_questions)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=f"Quiz generation failed — please try again. ({exc})") from exc
+    except Exception as exc:
+        message = str(exc)
+        if "API_KEY_INVALID" in message or "API key not valid" in message:
+            detail = (
+                "Google API key is invalid or not enabled for Gemini. "
+                "Create a new lab session with a valid key."
+            )
+        else:
+            detail = f"Gemini quiz generation failed: {message}"
+        raise HTTPException(status_code=502, detail=detail) from exc
 
     with get_db() as conn:
         cur = conn.execute(
             "INSERT INTO quizzes (token, status, n_questions, created_at) VALUES (?, 'draft', ?, ?)",
-            (req.token, req.n_questions, datetime.utcnow().isoformat()),
+            (req.token, req.n_questions, datetime.now(UTC).isoformat()),
         )
         quiz_id = cur.lastrowid
         for i, q in enumerate(questions):
