@@ -63,6 +63,13 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - `POST /quiz/{quiz_id}/submit` accepts student answers only for published
   quizzes, returns per-question correctness, and includes explanations only for
   wrong answers.
+- The student quiz UI stores local in-progress quiz state, supports retrying
+  only missed questions, and keeps visual feedback out of persisted state.
+- When a quiz round completes, the student quiz panel background indicates the
+  round result: green for zero missed questions, yellow for one missed question,
+  and red for more than one missed question.
+- Starting a quiz round, rendering a question, or retrying missed questions
+  resets the student quiz panel to the default background.
 - `GET /quiz/{quiz_id}/stats` returns anonymous attempt and correctness counts.
 
 ## Acceptance Criteria

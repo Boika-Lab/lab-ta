@@ -312,6 +312,11 @@
       gap: 0;
     }
 
+    #quiz-panel.quiz-feedback-default { background: var(--bg); }
+    #quiz-panel.quiz-feedback-success { background: #e7f6ed; }
+    #quiz-panel.quiz-feedback-warning { background: #fff4cf; }
+    #quiz-panel.quiz-feedback-danger  { background: #fde7e7; }
+
     .quiz-card {
       background: var(--card);
       border-radius: 14px;
@@ -782,9 +787,23 @@
       document.getElementById('input-bar').style.display  = 'flex';
     }
 
+    function setQuizFeedbackState(state) {
+      const panel = document.getElementById('quiz-panel');
+      panel.classList.remove(
+        'quiz-feedback-default',
+        'quiz-feedback-success',
+        'quiz-feedback-warning',
+        'quiz-feedback-danger'
+      );
+      panel.classList.add(`quiz-feedback-${state}`);
+    }
+
     function renderQuiz() {
       const panel = document.getElementById('quiz-panel');
       panel.innerHTML = '';
+      if (['banner', 'question', 'question-result'].includes(quizPhase)) {
+        setQuizFeedbackState('default');
+      }
       if      (quizPhase === 'banner')           renderBanner(panel);
       else if (quizPhase === 'question')         renderQuestion(panel);
       else if (quizPhase === 'question-result')  renderQuestionResult(panel);
@@ -798,6 +817,7 @@
     }
 
     function renderBanner(panel) {
+      setQuizFeedbackState('default');
       const card = document.createElement('div');
       card.className = 'quiz-card';
       card.innerHTML = `
@@ -810,6 +830,7 @@
     }
 
     function startQuiz() {
+      setQuizFeedbackState('default');
       roundQuestions = [...quizData.questions];
       roundIndex     = 0;
       roundAnswers   = {};
@@ -818,6 +839,7 @@
     }
 
     function renderQuestion(panel) {
+      setQuizFeedbackState('default');
       const q = roundQuestions[roundIndex];
       const label = document.createElement('div');
       label.className = 'quiz-progress-label';
@@ -928,6 +950,14 @@
     function renderRoundComplete(panel) {
       const failed = roundQuestions.filter(q => !roundAnswers[q.id]?.correct);
       if (failed.length === 0) {
+        setQuizFeedbackState('success');
+      } else if (failed.length === 1) {
+        setQuizFeedbackState('warning');
+      } else if (failed.length > 1) {
+        setQuizFeedbackState('danger');
+      }
+
+      if (failed.length === 0) {
         quizPhase = 'cleared';
         localStorage.setItem(LS_CLEARED, '1');
         localStorage.removeItem(LS_STATE);
@@ -950,6 +980,7 @@
     }
 
     function retryFailed() {
+      setQuizFeedbackState('default');
       const failedIds = new Set(
         Object.entries(roundAnswers)
           .filter(([, a]) => !a.correct)

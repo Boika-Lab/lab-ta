@@ -319,3 +319,28 @@ def test_only_one_published_quiz_per_lab(client, monkeypatch):
     conflict = client.post(f"/quiz/{second_id}/publish")
     assert conflict.status_code == 409
     assert f"quiz #{first_id}" in conflict.json()["detail"]
+
+
+def test_student_quiz_completion_feedback_hooks_exist():
+    template = Path("templates/student.html").read_text()
+
+    assert "#quiz-panel.quiz-feedback-success" in template
+    assert "#quiz-panel.quiz-feedback-warning" in template
+    assert "#quiz-panel.quiz-feedback-danger" in template
+    assert "function setQuizFeedbackState(state)" in template
+    assert "setQuizFeedbackState('default')" in template
+
+    retry_start = template.index("function retryFailed()")
+    retry_body = template[retry_start:template.index("function renderCleared", retry_start)]
+    assert "setQuizFeedbackState('default')" in retry_body
+
+    round_complete_start = template.index("function renderRoundComplete(panel)")
+    round_complete_body = template[
+        round_complete_start:template.index("function retryFailed()", round_complete_start)
+    ]
+    assert "failed.length === 0" in round_complete_body
+    assert "setQuizFeedbackState('success')" in round_complete_body
+    assert "failed.length === 1" in round_complete_body
+    assert "setQuizFeedbackState('warning')" in round_complete_body
+    assert "failed.length > 1" in round_complete_body
+    assert "setQuizFeedbackState('danger')" in round_complete_body

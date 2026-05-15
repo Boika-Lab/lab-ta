@@ -22,6 +22,9 @@ future feature areas.
 - Student quiz gate through `GET /quiz/active/{token}` and
   `POST /quiz/{quiz_id}/submit`.
 - Retry flow for missed quiz questions in the student UI.
+- Quiz completion feedback in the student UI: green after a perfect round,
+  yellow after one missed question, red after multiple missed questions, and
+  reset on retry.
 - Anonymous quiz attempt stats through `GET /quiz/{quiz_id}/stats`.
 - LLM Prompt Externalization completed: prompt templates are stored as Markdown
   files under `prompts/` and loaded once at application startup/import.
@@ -31,6 +34,7 @@ future feature areas.
 - Markdown specification workflow in `specs/`.
 - Current behavior spec for inherited app behavior.
 - Completed LLM Prompt Externalization spec.
+- Completed Quiz Completion Feedback spec.
 - Reusable spec template for future changes.
 - Pytest route-level contract tests.
 - Test database isolation through `LAB_TA_DB_PATH`.
@@ -71,14 +75,6 @@ not current behavior.
   session to be extracted as a complete log.
 - Keep persistent chat logging disabled unless the instructor explicitly turns
   it on.
-
-### Quiz Completion Feedback
-
-- After a student submits quiz answers, change the student UI background based
-  on the result: green when all answers are correct, yellow when exactly one
-  answer is incorrect, and red when more than one answer is incorrect.
-- Reset the background to the default color whenever the student attempts the
-  quiz again.
 
 ### Security Audit
 
