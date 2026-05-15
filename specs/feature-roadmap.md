@@ -116,6 +116,98 @@ recommended first step before broader provider abstraction.
 - No migration of existing lab rows to a new model.
 - No changes to API key storage.
 
+### Persistent Instructor Lab Dashboard
+
+Add a durable instructor-facing management URL for each lab while preserving the
+current unauthenticated no-auth model. The immediate goal is reloadability and
+recoverability, not access control.
+
+#### Goal
+
+- Give every configured lab an instructor dashboard URL that can be bookmarked,
+  refreshed, reopened, or shared intentionally.
+- Let instructors return to chat logs, quiz creation, quiz status, and quiz
+  stats for an existing lab without recreating the assignment.
+- Reconstruct dashboard state from SQLite instead of relying on in-memory
+  browser variables set immediately after `POST /api/configure`.
+
+#### Proposed Behavior
+
+- Add an instructor route such as `GET /instructor/{token}` or
+  `GET /manage/{token}` that serves the instructor dashboard for a lab token.
+- Extend `POST /api/configure` to return an `instructor_url` alongside the
+  existing `token` and `student_url`.
+- After successful lab creation, the instructor UI should navigate to or display
+  the durable instructor URL.
+- Add a lab-level instructor dashboard API, for example
+  `GET /api/instructor/lab/{token}`, that returns enough state to rebuild the
+  page:
+  - lab name
+  - model
+  - student URL
+  - chat logging enabled status
+  - active/published quiz summary if one exists
+  - draft quiz summaries if draft quiz recovery is supported
+  - quiz IDs needed for editing, publishing, closing, and stats
+- The instructor dashboard should continue using the existing chat log endpoint
+  or equivalent data from the dashboard API.
+- Unknown tokens should return `404` from both the page-supporting APIs and any
+  new dashboard API.
+- Current unauthenticated behavior remains unchanged: anyone with the
+  instructor URL can manage that lab.
+
+#### Acceptance Criteria
+
+- Refreshing an instructor dashboard URL restores the lab name, student URL,
+  chat log controls, and quiz management state.
+- Existing student URLs continue to work unchanged.
+- A newly created lab response includes both `student_url` and
+  `instructor_url`.
+- Instructors can recover the ID of any active/published quiz for the lab after
+  refresh and view stats without needing the original browser state.
+- If draft quiz recovery is included, instructors can recover and continue
+  editing draft quizzes after refresh. If not included, draft recovery is
+  explicitly documented as a non-goal for the first version.
+- Route/database contract tests cover dashboard restore, unknown-token `404`,
+  and reload after quiz publication.
+- Static template tests cover URL/token detection and dashboard hydration hooks.
+- README, `specs/current-behavior.md`, and `specs/tech-stack.md` are updated
+  when implemented.
+
+#### Non-Goals
+
+- No login, password, role-based access control, or session cookies.
+- No separate instructor secret token in the first version.
+- No changes to the student chat URL contract.
+- No migration away from token-based unauthenticated routes.
+
+### Instructor Authentication and Access Control
+
+Evaluate whether Lab TA should move beyond unauthenticated instructor URLs. This
+is a separate design effort from the persistent dashboard because it affects
+sharing, classroom setup, operational complexity, and privacy expectations.
+
+#### Questions to Resolve
+
+- Should instructor access use a separate unguessable instructor token, a shared
+  passphrase, local-only admin access, OAuth, or full user accounts?
+- Should the student token and instructor token be different identifiers?
+- Should chat logs and quiz stats require stronger protection than student chat
+  access?
+- How should existing lab sessions be migrated if an access-control model is
+  added later?
+- What is acceptable friction for an instructor running a temporary local lab
+  server in a classroom?
+
+#### Candidate Acceptance Criteria
+
+- The chosen model is documented before implementation.
+- The threat model covers student access, instructor access, API key storage,
+  chat logs, quiz data, and public Tailscale Funnel exposure.
+- Any implementation preserves a low-friction classroom workflow.
+- Automated tests cover authorized access, unauthorized access, and backwards
+  compatibility or migration behavior.
+
 ### LiteLLM Provider Support
 
 - Add LiteLLM as the LLM integration layer so the app can switch to other LLM
