@@ -20,6 +20,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
 ## Current Specs
 
 - `current-behavior.md` documents the inherited app behavior.
+- `llm-prompt-externalization.md` documents the externalized prompt template
+  behavior.
 - `template.md` is the starting point for future feature or change specs.
 
 ## Test Policy

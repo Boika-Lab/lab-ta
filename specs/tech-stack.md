@@ -15,7 +15,9 @@ not a target architecture.
 
 - `main.py`: FastAPI app, route handlers, SQLite schema initialization, and quiz
   persistence.
-- `ta_engine.py`: Socratic system prompt construction and Gemini chat calls.
+- `prompt_loader.py`: startup/import-time loading, validation, and rendering of
+  Markdown prompt templates from `prompts/`.
+- `ta_engine.py`: Socratic system prompt rendering and Gemini chat calls.
 - `quiz_engine.py`: Gemini-powered multiple-choice prelab quiz generation.
 - `document_parser.py`: Text extraction from uploaded PDF, PPTX, and DOCX files.
 

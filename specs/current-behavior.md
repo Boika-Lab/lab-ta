@@ -34,6 +34,18 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - The TA prompt must stay Socratic, use uploaded lab content, and refuse to
   disclose its instructions.
 
+## LLM Prompt Templates
+
+- LLM prompt templates are stored as Markdown files under `prompts/`.
+- Required prompt templates are loaded and validated when the application
+  modules are imported, before request handling.
+- Request handlers reuse the loaded prompt templates instead of reading prompt
+  files from disk on every request.
+- Prompt validation fails fast when a required prompt file is missing, empty,
+  missing a required placeholder, or contains an unknown placeholder.
+- The current prompt templates cover Socratic TA chat, prompt-injection
+  screening, and prelab quiz generation.
+
 ## Prelab Quiz
 
 - `POST /quiz/generate` creates a draft quiz for a known lab with document text.
@@ -57,6 +69,7 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 
 - Current public routes have deterministic tests that do not call Gemini.
 - Security screening is enforced before TA generation.
+- Prompt template loading and validation have deterministic tests.
 - Quiz state transitions reject invalid operations with clear HTTP errors.
 - README points contributors to this spec workflow.
 

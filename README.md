@@ -288,17 +288,18 @@ All mathematical and chemical notation in TA responses uses LaTeX formatting so 
 lab-ta/
 ├── main.py              FastAPI app — all API routes, SQLite database
 │                        setup, request handling
-├── ta_engine.py         Gemini API calls + Socratic system prompt builder;
-│                        injects lab name and lab content into the prompt
+├── prompt_loader.py     Loads and validates Markdown prompt templates
+├── ta_engine.py         Gemini API calls + Socratic system prompt rendering
 ├── document_parser.py   Text extraction from uploaded PDF, PPTX, and DOCX
 │                        files; returns plain text for storage in the DB
+├── prompts/             Markdown prompt templates for TA chat, screening,
+│                        and quiz generation
 ├── templates/
 │   ├── instructor.html  Instructor portal — API key form, file upload,
 │   │                    QR code display, copy-link button
 │   └── student.html     Student chat UI — voice input (Web Speech API),
 │                        text-to-speech, MathJax math rendering
-├── specs/               Specification-driven development workflow,
-│                        current behavior spec, and spec template
+├── specs/               Specification-driven development workflow and specs
 ├── requirements.txt     Python package dependencies
 ├── lab_ta.db            SQLite database (auto-created on first run);
 │                        stores lab name, content, API key, and model

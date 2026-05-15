@@ -23,11 +23,14 @@ future feature areas.
   `POST /quiz/{quiz_id}/submit`.
 - Retry flow for missed quiz questions in the student UI.
 - Anonymous quiz attempt stats through `GET /quiz/{quiz_id}/stats`.
+- LLM Prompt Externalization completed: prompt templates are stored as Markdown
+  files under `prompts/` and loaded once at application startup/import.
 
 ## Current Quality and Process Features
 
 - Markdown specification workflow in `specs/`.
 - Current behavior spec for inherited app behavior.
+- Completed LLM Prompt Externalization spec.
 - Reusable spec template for future changes.
 - Pytest route-level contract tests.
 - Test database isolation through `LAB_TA_DB_PATH`.
@@ -47,14 +50,6 @@ future feature areas.
 Future work should start as a new or updated spec with explicit acceptance
 criteria. The planned feature areas below should be treated as roadmap items,
 not current behavior.
-
-### LLM Prompt Externalization
-
-- Move all LLM prompts out of Python source files and into separate Markdown
-  files under `/prompts` for better data/code separation.
-- Load prompt Markdown files into memory when the application starts, so request
-  handlers can reuse validated prompt templates without reading from disk on
-  every request.
 
 ### LLM Configuration File
 
