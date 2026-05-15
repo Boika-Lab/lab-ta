@@ -182,6 +182,67 @@ Future work should start as a new or updated spec with explicit acceptance
 criteria. The planned feature areas below should be treated as roadmap items,
 not current behavior.
 
+### Delete Saved Labs
+
+Add a destructive cleanup flow for saved labs and all data associated with a lab
+token. This builds on the saved-labs index, which currently allows lookup and
+navigation but has no way to remove obsolete or sensitive sessions.
+
+#### Goal
+
+- Let instructors permanently remove old lab sessions from the local SQLite
+  database.
+- Delete sensitive stored data for a lab, including the Google API key, uploaded
+  lab document text, anonymous chat logs, quizzes, quiz questions, and quiz
+  stats.
+- Keep the deletion control discoverable from the saved-labs index while making
+  accidental deletion unlikely.
+
+#### Proposed Behavior
+
+- Add a delete action to each row on `/instructor/labs`.
+- Require typed-token confirmation before deletion. The instructor must type the
+  exact lab token before the destructive action is enabled or submitted.
+- Add a supporting API, for example `DELETE /api/instructor/lab/{token}`, that
+  permanently deletes:
+  - the `labs` row for the token
+  - all `chat_logs` rows for the token
+  - all `quizzes` rows for the token
+  - all `quiz_questions` rows belonging to those quizzes
+  - all `quiz_question_stats` rows belonging to those quiz questions
+- After deletion, remove the lab row from the saved-labs UI and show a concise
+  success message.
+- Deleted lab student URLs and instructor dashboard URLs should return `404`.
+- Unknown tokens should return `404` from the deletion API.
+- The current unauthenticated model remains unchanged in this roadmap item:
+  anyone with access to the saved-labs index can initiate deletion after
+  confirmation.
+
+#### Acceptance Criteria
+
+- Instructors can delete a saved lab from `/instructor/labs` only after typing
+  the matching token.
+- Deleting a lab removes the lab row, uploaded lab content, stored API key,
+  chat logs, quizzes, quiz questions, and quiz stats associated with that token.
+- After deletion, the lab no longer appears in `GET /api/instructor/labs`.
+- After deletion, `GET /instructor/{token}`, `GET /api/instructor/lab/{token}`,
+  `GET /api/lab/{token}`, and student chat/quiz routes for that token no longer
+  expose the deleted lab.
+- Route/database contract tests cover full cascade deletion, unknown-token
+  `404`, saved-labs list refresh behavior, and deleted-route `404` behavior.
+- Static template tests cover the delete control, typed-token confirmation, and
+  deletion API call.
+- README, `specs/current-behavior.md`, and `specs/tech-stack.md` are updated
+  when implemented.
+
+#### Non-Goals
+
+- No archive, undo, soft-delete, recycle bin, or recovery flow in the first
+  version.
+- No bulk deletion.
+- No deletion from the per-lab dashboard in the first version.
+- No authentication or access-control change.
+
 ### Instructor Authentication and Access Control
 
 Evaluate whether Lab TA should move beyond unauthenticated instructor URLs. This
