@@ -181,6 +181,70 @@ recoverability, not access control.
 - No changes to the student chat URL contract.
 - No migration away from token-based unauthenticated routes.
 
+### Instructor Lab Index
+
+Add an instructor-facing index of saved lab assignments in the local database.
+This should build on the Persistent Instructor Lab Dashboard feature, because
+each row should link directly to the durable instructor dashboard for that lab.
+The feature follows the current unauthenticated no-auth model unless and until a
+future authentication design changes that.
+
+#### Goal
+
+- Let instructors recover existing lab assignments without remembering or
+  manually copying tokens.
+- Make the local database contents visible in a compact operational view.
+- Provide a fast path from a saved lab row to its instructor dashboard.
+
+#### Proposed Behavior
+
+- Add an instructor lab list route, for example `GET /instructor/labs` or
+  `GET /manage`, that serves a saved-labs index page.
+- Add a supporting API, for example `GET /api/instructor/labs`, that returns one
+  row per lab in the database.
+- Each row should include:
+  - lab name
+  - lab token / identifier
+  - student URL
+  - instructor dashboard URL
+  - chat logging enabled status
+  - created timestamp
+  - quiz count
+  - whether any quiz exists
+  - published/active quiz count or active quiz status
+  - chat log exchange count if chat logging is enabled
+- The UI should display a scan-friendly table or list with columns for lab name,
+  identifier, quiz status/count, chat logging status, and creation date.
+- Clicking a row, or a clear action within the row, should open the instructor
+  dashboard for that lab.
+- The list should sort by newest lab first by default.
+- Unknown or empty databases should show an empty state rather than an error.
+
+#### Acceptance Criteria
+
+- Instructors can open the lab index and see all lab tokens currently stored in
+  SQLite.
+- Each listed lab shows lab name, identifier, chat logging status, and whether
+  quizzes exist with a quiz count.
+- Each listed lab links to the persistent instructor dashboard URL from the
+  previous roadmap feature.
+- The API returns deterministic aggregate counts for quizzes and chat logs.
+- The list excludes sensitive fields such as API keys and raw lab document
+  content.
+- Route/database contract tests cover empty database, multiple labs, quiz
+  counts, chat log counts, and newest-first ordering.
+- Static template tests cover the presence of the saved-labs index and dashboard
+  links.
+- README, `specs/current-behavior.md`, and `specs/tech-stack.md` are updated
+  when implemented.
+
+#### Non-Goals
+
+- No search, filtering, pagination, archiving, or deletion in the first version.
+- No authentication or access-control change.
+- No display of API keys or uploaded lab content.
+- No editing lab metadata from the index.
+
 ### Instructor Authentication and Access Control
 
 Evaluate whether Lab TA should move beyond unauthenticated instructor URLs. This
