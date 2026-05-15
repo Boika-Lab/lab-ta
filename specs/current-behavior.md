@@ -21,10 +21,20 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Persistent chat logging is disabled unless the instructor explicitly enables
   it during lab setup.
 - Unsupported file types return `400`.
-- The response includes the token and relative student URL.
-- After successful lab creation, the instructor result panel includes chat log
-  controls. Refresh loads the current JSON-backed log view for that token, and
-  Download JSON exports the same data.
+- The response includes the token, relative student URL, and relative
+  instructor dashboard URL.
+- After successful lab creation, the instructor UI navigates to the durable
+  `/instructor/{token}` dashboard URL.
+- `GET /instructor/{token}` serves the instructor dashboard for known lab
+  tokens and returns `404` for unknown tokens.
+- `GET /api/instructor/lab/{token}` returns dashboard hydration data including
+  lab name, model, relative student URL, relative instructor URL, chat logging
+  status, and the active published quiz summary when one exists.
+- The instructor dashboard uses the same unauthenticated token model as the
+  student page. Anyone with the instructor URL can manage the lab.
+- The instructor dashboard result panel includes chat log controls. Refresh
+  loads the current JSON-backed log view for that token, and Download JSON
+  exports the same data.
 
 ## Student Chat
 
@@ -110,6 +120,9 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Starting a quiz round, rendering a question, or retrying missed questions
   resets the student quiz panel to the default background.
 - `GET /quiz/{quiz_id}/stats` returns anonymous attempt and correctness counts.
+- Refreshing `/instructor/{token}` restores the active published quiz ID for
+  stats access. Draft quiz recovery is not supported in the first persistent
+  dashboard version.
 
 ## Acceptance Criteria
 

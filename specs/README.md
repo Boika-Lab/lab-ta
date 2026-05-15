@@ -24,6 +24,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   Gemini model role configuration.
 - `llm-prompt-externalization.md` documents the externalized prompt template
   behavior.
+- `persistent-instructor-lab-dashboard.md` documents durable unauthenticated
+  instructor dashboard URLs and hydration behavior.
 - `persistent-chat-logs.md` documents opt-in anonymous chat log persistence and
   export behavior.
 - `template.md` is the starting point for future feature or change specs.

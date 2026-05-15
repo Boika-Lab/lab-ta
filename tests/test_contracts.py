@@ -97,6 +97,7 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     body = response.json()
     assert len(body["token"]) == 8
     assert body["student_url"] == f"/lab/{body['token']}"
+    assert body["instructor_url"] == f"/instructor/{body['token']}"
 
     with main.get_db() as conn:
         row = conn.execute(
@@ -210,6 +211,68 @@ def test_lab_info_returns_contract_and_404(client):
     missing = client.get("/api/lab/missing")
     assert missing.status_code == 404
     assert missing.json()["detail"] == "Lab not found"
+
+
+def test_instructor_dashboard_page_known_token_and_404(client):
+    token = insert_lab()
+
+    response = client.get(f"/instructor/{token}")
+    assert response.status_code == 200
+    assert "Lab TA" in response.text
+    assert "Configure a Socratic teaching assistant" in response.text
+
+    missing = client.get("/instructor/missing")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Lab not found"
+
+
+def test_instructor_lab_api_returns_dashboard_hydration_without_active_quiz(client):
+    token = insert_lab(chat_logging_enabled=True)
+
+    response = client.get(f"/api/instructor/lab/{token}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "token": token,
+        "lab_name": "Electrochemistry",
+        "model": llm_config.CHAT_MODEL,
+        "student_url": f"/lab/{token}",
+        "instructor_url": f"/instructor/{token}",
+        "chat_logging_enabled": True,
+        "active_quiz": None,
+    }
+
+    missing = client.get("/api/instructor/lab/missing")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Lab not found"
+
+
+def test_instructor_lab_api_returns_published_quiz_for_stats_recovery(client):
+    token = insert_lab()
+    with main.get_db() as conn:
+        draft = conn.execute(
+            "INSERT INTO quizzes (token, status, n_questions, created_at) "
+            "VALUES (?, 'draft', 5, ?)",
+            (token, "2026-05-15T12:00:00"),
+        )
+        published = conn.execute(
+            "INSERT INTO quizzes (token, status, n_questions, created_at) "
+            "VALUES (?, 'published', 3, ?)",
+            (token, "2026-05-15T12:30:00"),
+        )
+        conn.commit()
+
+    response = client.get(f"/api/instructor/lab/{token}")
+
+    assert response.status_code == 200
+    active_quiz = response.json()["active_quiz"]
+    assert active_quiz == {
+        "quiz_id": published.lastrowid,
+        "status": "published",
+        "n_questions": 3,
+        "created_at": "2026-05-15T12:30:00",
+    }
+    assert active_quiz["quiz_id"] != draft.lastrowid
 
 
 def test_blocked_chat_does_not_call_ta_generation(client, monkeypatch):
@@ -670,6 +733,19 @@ def test_instructor_chat_logging_checkbox_exists():
     assert "function loadChatLogs()" in template
     assert "function downloadChatLogs()" in template
     assert "/api/chat-logs/${currentToken}" in template
+
+
+def test_instructor_dashboard_hydration_hooks_exist():
+    template = Path("templates/instructor.html").read_text()
+
+    assert "window.location.assign(json.instructor_url)" in template
+    assert "function hydrateInstructorDashboard(token)" in template
+    assert "function renderDashboard(data)" in template
+    assert "window.location.pathname.match(/^\\/instructor\\/([^/]+)$/)" in template
+    assert "fetch(`/api/instructor/lab/${token}`)" in template
+    assert "data.active_quiz.quiz_id" in template
+    assert "publishedQuizId = data.active_quiz.quiz_id" in template
+    assert "document.getElementById('quiz-gen-controls').style.display = 'block'" in template
 
 
 def test_instructor_landing_page_shows_configured_model_settings(client):

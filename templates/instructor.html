@@ -478,6 +478,64 @@
     let currentToken = '';
     let lastChatLogs = null;
 
+    function renderDashboard(data) {
+      studentUrl = window.location.origin + data.student_url;
+      currentToken = data.token;
+      lastChatLogs = null;
+
+      document.getElementById('setup-form').style.display = 'none';
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error-msg').style.display = 'none';
+      document.getElementById('result').style.display = 'block';
+
+      document.getElementById('success-label').textContent =
+        `Lab "${data.lab_name}" is ready!`;
+      document.getElementById('student-url').textContent = studentUrl;
+      document.getElementById('qr-img').src =
+        `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(studentUrl)}&size=200x200`;
+      document.getElementById('logs-output').textContent = data.chat_logging_enabled
+        ? 'Use Refresh to load anonymous chat logs for this lab.'
+        : 'Chat logging is disabled for this lab.';
+
+      document.getElementById('quiz-error').style.display = 'none';
+      document.getElementById('quiz-gen-loading').style.display = 'none';
+      document.getElementById('quiz-draft-editor').style.display = 'none';
+      document.getElementById('stats-panel').style.display = 'none';
+
+      if (data.active_quiz) {
+        currentQuizId = data.active_quiz.quiz_id;
+        publishedQuizId = data.active_quiz.quiz_id;
+        document.getElementById('quiz-gen-controls').style.display = 'none';
+        showPublishedState();
+      } else {
+        currentQuizId = null;
+        publishedQuizId = null;
+        document.getElementById('quiz-published-state').style.display = 'none';
+        document.getElementById('stats-btn').style.display = 'none';
+        document.getElementById('quiz-gen-controls').style.display = 'block';
+      }
+    }
+
+    async function hydrateInstructorDashboard(token) {
+      document.getElementById('setup-form').style.display = 'none';
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('error-msg').style.display = 'none';
+      document.getElementById('loading').style.display = 'flex';
+
+      try {
+        const res = await fetch(`/api/instructor/lab/${token}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+        renderDashboard(data);
+      } catch (err) {
+        const errEl = document.getElementById('error-msg');
+        errEl.textContent = 'Error: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
     document.getElementById('setup-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.target;
@@ -497,19 +555,7 @@
           throw new Error(json.detail || 'Server error');
         }
 
-        studentUrl = window.location.origin + json.student_url;
-        currentToken = json.token;
-        lastChatLogs = null;
-
-        document.getElementById('success-label').textContent =
-          `Lab "${form.lab_name.value}" is ready!`;
-        document.getElementById('student-url').textContent = studentUrl;
-        document.getElementById('qr-img').src =
-          `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(studentUrl)}&size=200x200`;
-
-        document.getElementById('result').style.display = 'block';
-        document.getElementById('logs-output').textContent =
-          'Use Refresh to load anonymous chat logs for this lab.';
+        window.location.assign(json.instructor_url);
       } catch (err) {
         form.style.display = 'block';
         const errEl = document.getElementById('error-msg');
@@ -519,6 +565,11 @@
         document.getElementById('loading').style.display = 'none';
       }
     });
+
+    const instructorMatch = window.location.pathname.match(/^\/instructor\/([^/]+)$/);
+    if (instructorMatch) {
+      hydrateInstructorDashboard(decodeURIComponent(instructorMatch[1]));
+    }
 
     function copyLink() {
       navigator.clipboard.writeText(studentUrl).then(() => {

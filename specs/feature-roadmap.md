@@ -9,6 +9,8 @@ future feature areas.
 - Lab session creation through `POST /api/configure`.
 - Upload and plain-text extraction for PDF, PPTX, and DOCX lab materials.
 - Unique eight-character student tokens and shareable `/lab/{token}` URLs.
+- Durable unauthenticated instructor dashboard URLs at `/instructor/{token}`.
+- Instructor dashboard hydration through `GET /api/instructor/lab/{token}`.
 - QR code display and copy/open-link controls for student access.
 - Student lab page served at `GET /lab/{token}`.
 - Lab metadata lookup through `GET /api/lab/{token}`.
@@ -48,6 +50,8 @@ future feature areas.
 - Completed Quiz Completion Feedback spec.
 - Completed Optional Persistent Chat Logs spec, including SQLite upgrade
   behavior, route contracts, and template wiring tests.
+- Completed Persistent Instructor Lab Dashboard spec, including durable
+  dashboard route contracts and hydration behavior.
 - Reusable spec template for future changes.
 - Pytest route-level contract tests.
 - Test database isolation through `LAB_TA_DB_PATH`.
@@ -56,6 +60,7 @@ future feature areas.
 
 - The app stores API keys locally in SQLite.
 - There is no user login or role-based authentication.
+- Anyone with an instructor dashboard URL can manage that lab.
 - The instructor and student pages are plain HTML/CSS/JavaScript templates.
 - Database schema setup is handled with `CREATE TABLE IF NOT EXISTS`; there is
   no migration framework.
@@ -64,6 +69,32 @@ future feature areas.
 - Live Gemini calls are intentionally excluded from automated tests.
 
 ## Completed Roadmap Items
+
+### Persistent Instructor Lab Dashboard
+
+Give every configured lab an instructor dashboard URL that can be bookmarked,
+refreshed, reopened, or intentionally shared while preserving the current
+unauthenticated token model.
+
+#### Implemented Behavior
+
+- `GET /instructor/{token}` serves the instructor dashboard for known lab
+  tokens and returns `404` for unknown tokens.
+- `POST /api/configure` returns `instructor_url` alongside `token` and
+  `student_url`.
+- After successful lab creation, the instructor UI navigates to the returned
+  dashboard URL.
+- `GET /api/instructor/lab/{token}` returns lab metadata, relative student and
+  instructor URLs, chat logging status, and the active published quiz summary
+  when one exists.
+- Refreshing `/instructor/{token}` restores the student URL, QR code, chat log
+  controls, current token, published quiz state, and quiz stats access.
+
+#### Non-Goals
+
+- No authentication, login, session cookie, or separate instructor secret token.
+- No change to the student URL contract.
+- No draft quiz recovery in the first dashboard version.
 
 ### Centralized Gemini Model Configuration
 
@@ -123,71 +154,6 @@ recommended first step before broader provider abstraction.
 Future work should start as a new or updated spec with explicit acceptance
 criteria. The planned feature areas below should be treated as roadmap items,
 not current behavior.
-
-### Persistent Instructor Lab Dashboard
-
-Add a durable instructor-facing management URL for each lab while preserving the
-current unauthenticated no-auth model. The immediate goal is reloadability and
-recoverability, not access control.
-
-#### Goal
-
-- Give every configured lab an instructor dashboard URL that can be bookmarked,
-  refreshed, reopened, or shared intentionally.
-- Let instructors return to chat logs, quiz creation, quiz status, and quiz
-  stats for an existing lab without recreating the assignment.
-- Reconstruct dashboard state from SQLite instead of relying on in-memory
-  browser variables set immediately after `POST /api/configure`.
-
-#### Proposed Behavior
-
-- Add an instructor route such as `GET /instructor/{token}` or
-  `GET /manage/{token}` that serves the instructor dashboard for a lab token.
-- Extend `POST /api/configure` to return an `instructor_url` alongside the
-  existing `token` and `student_url`.
-- After successful lab creation, the instructor UI should navigate to or display
-  the durable instructor URL.
-- Add a lab-level instructor dashboard API, for example
-  `GET /api/instructor/lab/{token}`, that returns enough state to rebuild the
-  page:
-  - lab name
-  - model
-  - student URL
-  - chat logging enabled status
-  - active/published quiz summary if one exists
-  - draft quiz summaries if draft quiz recovery is supported
-  - quiz IDs needed for editing, publishing, closing, and stats
-- The instructor dashboard should continue using the existing chat log endpoint
-  or equivalent data from the dashboard API.
-- Unknown tokens should return `404` from both the page-supporting APIs and any
-  new dashboard API.
-- Current unauthenticated behavior remains unchanged: anyone with the
-  instructor URL can manage that lab.
-
-#### Acceptance Criteria
-
-- Refreshing an instructor dashboard URL restores the lab name, student URL,
-  chat log controls, and quiz management state.
-- Existing student URLs continue to work unchanged.
-- A newly created lab response includes both `student_url` and
-  `instructor_url`.
-- Instructors can recover the ID of any active/published quiz for the lab after
-  refresh and view stats without needing the original browser state.
-- If draft quiz recovery is included, instructors can recover and continue
-  editing draft quizzes after refresh. If not included, draft recovery is
-  explicitly documented as a non-goal for the first version.
-- Route/database contract tests cover dashboard restore, unknown-token `404`,
-  and reload after quiz publication.
-- Static template tests cover URL/token detection and dashboard hydration hooks.
-- README, `specs/current-behavior.md`, and `specs/tech-stack.md` are updated
-  when implemented.
-
-#### Non-Goals
-
-- No login, password, role-based access control, or session cookies.
-- No separate instructor secret token in the first version.
-- No changes to the student chat URL contract.
-- No migration away from token-based unauthenticated routes.
 
 ### Instructor Lab Index
 

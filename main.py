@@ -207,6 +207,15 @@ async def instructor_portal() -> HTMLResponse:
     return HTMLResponse(content=render_instructor_html())
 
 
+@app.get("/instructor/{token}", response_class=HTMLResponse)
+async def instructor_dashboard(token: str) -> HTMLResponse:
+    with get_db() as conn:
+        row = conn.execute("SELECT 1 FROM labs WHERE token = ?", (token,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    return HTMLResponse(content=render_instructor_html())
+
+
 @app.get("/lab/{token}", response_class=HTMLResponse)
 async def student_chat(token: str) -> HTMLResponse:
     return HTMLResponse(content=load_html("student.html"))
@@ -276,7 +285,11 @@ async def configure(
         )
         conn.commit()
 
-    return {"token": token, "student_url": f"/lab/{token}"}
+    return {
+        "token": token,
+        "student_url": f"/lab/{token}",
+        "instructor_url": f"/instructor/{token}",
+    }
 
 
 @app.get("/api/lab/{token}")
@@ -288,6 +301,50 @@ async def get_lab_info(token: str):
     if not row:
         raise HTTPException(status_code=404, detail="Lab not found")
     return {"lab_name": row["lab_name"], "model": row["model"]}
+
+
+@app.get("/api/instructor/lab/{token}")
+async def get_instructor_lab(token: str):
+    with get_db() as conn:
+        lab = conn.execute(
+            """
+            SELECT lab_name, model, chat_logging_enabled
+            FROM labs
+            WHERE token = ?
+            """,
+            (token,),
+        ).fetchone()
+        if not lab:
+            raise HTTPException(status_code=404, detail="Lab not found")
+        quiz = conn.execute(
+            """
+            SELECT id, status, n_questions, created_at
+            FROM quizzes
+            WHERE token = ? AND status = 'published'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (token,),
+        ).fetchone()
+
+    active_quiz = None
+    if quiz:
+        active_quiz = {
+            "quiz_id": quiz["id"],
+            "status": quiz["status"],
+            "n_questions": quiz["n_questions"],
+            "created_at": quiz["created_at"],
+        }
+
+    return {
+        "token": token,
+        "lab_name": lab["lab_name"],
+        "model": lab["model"],
+        "student_url": f"/lab/{token}",
+        "instructor_url": f"/instructor/{token}",
+        "chat_logging_enabled": bool(lab["chat_logging_enabled"]),
+        "active_quiz": active_quiz,
+    }
 
 
 @app.post("/api/chat/{token}")

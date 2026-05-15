@@ -38,7 +38,9 @@ Opens the app  ──►  Fills in:       Open the student URL in Chrome
                          │           or speaking
                          ▼
                Gets a unique student
-               URL + QR code to share
+               URL + QR code to share,
+               plus an instructor URL
+               to reopen the dashboard
 ```
 
 Each lab session is independent — you can run multiple labs at the same time (e.g. for different lab sections or different experiments). Students never see the API key or the raw lab documents.
@@ -97,6 +99,8 @@ Before each student message reaches the main Gemini chat model, a separate Gemin
 Blocked messages are logged on the server side (visible in the terminal where uvicorn is running) with the session token and the exact message text.
 
 Instructors can also opt in to persistent anonymous chat logs when creating a lab. When enabled, the app stores each completed chat exchange with timestamp, anonymous browser session ID, exchange order, student question, TA response, and whether the message was blocked. Failed TA calls are not stored. Logs are available from the instructor result panel as an on-screen view and JSON download.
+
+Instructor dashboard URLs use the same unauthenticated token model as student links. Anyone with a URL like `/instructor/aB3xY9qR` can manage that lab, including chat logs and quiz state. Treat instructor URLs as private classroom-management links.
 
 **API key security**
 
@@ -218,13 +222,18 @@ You will see the Lab TA instructor setup page.
 
 ### Step 3 — Generate the Student Link
 
-Click **Generate Student TA Link**. After a few seconds you will see:
+Click **Generate Student TA Link**. After a few seconds the browser moves to the
+new instructor dashboard. There you will see:
 
 - A **unique student URL**, for example:
   `https://your-machine-name.tail766770.ts.net/lab/aB3xY9qR`
+- A **durable instructor dashboard URL** in the browser address bar, for example:
+  `https://your-machine-name.tail766770.ts.net/instructor/aB3xY9qR`
 - A **QR code** students can scan with their phone
 - A **Copy Link** button to copy the URL to your clipboard
 - Optional **Chat Logs** controls if anonymous logging was enabled for this lab
+
+You can refresh or reopen the instructor dashboard URL later to recover the student link, QR code, chat log controls, published quiz status, and quiz stats access. Draft quiz recovery is not supported in the first dashboard version.
 
 ### Step 4 — Share with Students
 
@@ -310,7 +319,8 @@ lab-ta/
 │                        and quiz generation
 ├── templates/
 │   ├── instructor.html  Instructor portal — API key form, file upload,
-│   │                    optional chat logs, QR code display, copy-link button
+│   │                    durable dashboard hydration, optional chat logs,
+│   │                    QR code display, copy-link button
 │   └── student.html     Student chat UI — voice input (Web Speech API),
 │                        text-to-speech, MathJax math rendering
 ├── specs/               Specification-driven development workflow and specs
