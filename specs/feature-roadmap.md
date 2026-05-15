@@ -1,7 +1,7 @@
 # Feature Roadmap
 
-This roadmap records the current feature surface of the project. It does not
-define future priorities yet.
+This roadmap records the current feature surface of the project and planned
+future feature areas.
 
 ## Current Feature Set
 
@@ -44,5 +44,51 @@ define future priorities yet.
 
 ## Future Roadmap
 
-No future roadmap has been defined yet. Future work should start as a new or
-updated spec with explicit acceptance criteria.
+Future work should start as a new or updated spec with explicit acceptance
+criteria. The planned feature areas below should be treated as roadmap items,
+not current behavior.
+
+### LLM Prompt Externalization
+
+- Move all LLM prompts out of Python source files and into separate Markdown
+  files under `/prompts` for better data/code separation.
+- Load prompt Markdown files into memory when the application starts, so request
+  handlers can reuse validated prompt templates without reading from disk on
+  every request.
+
+### LLM Configuration File
+
+- Move LLM configuration, including API key and model name, into a configuration
+  file instead of storing or passing those values through lab setup data.
+
+### LiteLLM Provider Support
+
+- Add LiteLLM as the LLM integration layer so the app can switch to other LLM
+  services through configuration rather than provider-specific code changes.
+
+### Optional Persistent Chat Logs
+
+- Add an instructor-facing checkbox to enable persistent database storage of
+  student chat sessions.
+- When enabled, store each chat exchange with the date and time of the student
+  question, the question text, and the model response text.
+- Store chat records in an ordered form that allows the full sequence of a chat
+  session to be extracted as a complete log.
+- Keep persistent chat logging disabled unless the instructor explicitly turns
+  it on.
+
+### Quiz Completion Feedback
+
+- After a student submits quiz answers, change the student UI background based
+  on the result: green when all answers are correct, yellow when exactly one
+  answer is incorrect, and red when more than one answer is incorrect.
+- Reset the background to the default color whenever the student attempts the
+  quiz again.
+
+### Security Audit
+
+- Review the codebase for possible security problems, including API key
+  handling, prompt-injection handling, uploaded document processing, database
+  access, unauthenticated instructor/student routes, and persisted student data.
+- Record any findings as actionable follow-up work with severity, affected
+  behavior, and suggested remediation.
