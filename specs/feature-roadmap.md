@@ -63,10 +63,58 @@ Future work should start as a new or updated spec with explicit acceptance
 criteria. The planned feature areas below should be treated as roadmap items,
 not current behavior.
 
-### LLM Configuration File
+### Centralized Gemini Model Configuration
 
-- Move LLM configuration, including API key and model name, into a configuration
-  file instead of storing or passing those values through lab setup data.
+Centralize the currently hardcoded Gemini model names while keeping the app
+Gemini-only and preserving the current instructor workflow. This is the
+recommended first step before broader provider abstraction.
+
+#### Goal
+
+- Remove duplicated hardcoded model strings from `main.py` and
+  `quiz_engine.py`.
+- Keep model configuration server-controlled, not instructor-selectable.
+- Preserve the existing `POST /api/configure` contract except for storing the
+  configured chat model instead of a literal constant.
+
+#### Proposed Behavior
+
+- Add a small configuration module, for example `llm_config.py`, that exposes:
+  - `CHAT_MODEL`
+  - `SCREENING_MODEL`
+  - `QUIZ_MODEL`
+- Defaults remain `gemini-2.5-flash` for all three model roles.
+- Allow optional environment variable overrides:
+  - `LAB_TA_CHAT_MODEL`
+  - `LAB_TA_SCREENING_MODEL`
+  - `LAB_TA_QUIZ_MODEL`
+- `main.py` uses `CHAT_MODEL` when creating new lab rows and `SCREENING_MODEL`
+  when screening messages.
+- `quiz_engine.py` accepts or imports `QUIZ_MODEL` instead of defining a local
+  `_MODEL` constant.
+- The instructor UI continues to show the configured chat model as read-only
+  text. It should not offer a model dropdown in this step.
+- Existing lab rows continue using their stored `model` value for TA chat.
+  Only newly configured labs pick up a changed `LAB_TA_CHAT_MODEL`.
+
+#### Acceptance Criteria
+
+- No Gemini model string is duplicated across runtime Python modules.
+- Default behavior is unchanged when no environment variables are set.
+- Setting `LAB_TA_CHAT_MODEL` changes the model stored for newly created labs.
+- Setting `LAB_TA_SCREENING_MODEL` changes the model used by screening.
+- Setting `LAB_TA_QUIZ_MODEL` changes the model used by quiz generation.
+- Route tests remain deterministic and do not call Gemini.
+- README, `specs/current-behavior.md`, and `specs/tech-stack.md` are updated
+  when the feature is implemented.
+
+#### Non-Goals
+
+- No provider abstraction.
+- No LiteLLM integration.
+- No instructor-facing model picker.
+- No migration of existing lab rows to a new model.
+- No changes to API key storage.
 
 ### LiteLLM Provider Support
 
