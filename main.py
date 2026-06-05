@@ -59,6 +59,14 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE labs ADD COLUMN chat_logging_enabled INTEGER NOT NULL DEFAULT 0"
             )
+        if "quiz_enabled" not in lab_columns:
+            conn.execute(
+                "ALTER TABLE labs ADD COLUMN quiz_enabled INTEGER NOT NULL DEFAULT 1"
+            )
+        if "ta_enabled" not in lab_columns:
+            conn.execute(
+                "ALTER TABLE labs ADD COLUMN ta_enabled INTEGER NOT NULL DEFAULT 1"
+            )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS quizzes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,6 +178,39 @@ def persist_chat_log(
         conn.commit()
 
 
+def _disabled_error(feature: str) -> HTTPException:
+    return HTTPException(status_code=403, detail=f"{feature} is disabled for this lab")
+
+
+def require_quiz_enabled_for_token(conn: sqlite3.Connection, token: str) -> sqlite3.Row:
+    row = conn.execute(
+        "SELECT quiz_enabled FROM labs WHERE token = ?",
+        (token,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Lab not found")
+    if not row["quiz_enabled"]:
+        raise _disabled_error("Quiz")
+    return row
+
+
+def require_quiz_enabled_for_quiz(conn: sqlite3.Connection, quiz_id: int) -> sqlite3.Row:
+    row = conn.execute(
+        """
+        SELECT q.*, l.quiz_enabled
+        FROM quizzes q
+        JOIN labs l ON l.token = q.token
+        WHERE q.id = ?
+        """,
+        (quiz_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    if not row["quiz_enabled"]:
+        raise _disabled_error("Quiz")
+    return row
+
+
 # ── Request models ────────────────────────────────────────────────────────────
 class ChatRequest(BaseModel):
     message: str
@@ -180,6 +221,11 @@ class ChatRequest(BaseModel):
 class GenerateQuizRequest(BaseModel):
     token: str
     n_questions: int
+
+
+class FeatureUpdateRequest(BaseModel):
+    quiz_enabled: bool
+    ta_enabled: bool
 
 
 class QuestionEdit(BaseModel):
@@ -255,6 +301,8 @@ async def screen_message(api_key: str, token: str, message: str) -> bool:
 async def configure(
     api_key: str = Form(...),
     lab_name: str = Form(...),
+    quiz_enabled: bool = Form(True),
+    ta_enabled: bool = Form(True),
     chat_logging_enabled: bool = Form(False),
     files: list[UploadFile] = File(default=[]),
 ):
@@ -276,8 +324,9 @@ async def configure(
             token = generate_token()
         conn.execute(
             "INSERT INTO labs "
-            "(token, lab_name, lab_content, api_key, model, created_at, chat_logging_enabled) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(token, lab_name, lab_content, api_key, model, created_at, "
+            "chat_logging_enabled, quiz_enabled, ta_enabled) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
                 lab_name,
@@ -286,6 +335,8 @@ async def configure(
                 llm_config.CHAT_MODEL,
                 datetime.now(UTC).isoformat(),
                 1 if chat_logging_enabled else 0,
+                1 if quiz_enabled else 0,
+                1 if ta_enabled else 0,
             ),
         )
         conn.commit()
@@ -301,11 +352,21 @@ async def configure(
 async def get_lab_info(token: str):
     with get_db() as conn:
         row = conn.execute(
-            "SELECT lab_name, model FROM labs WHERE token = ?", (token,)
+            """
+            SELECT lab_name, model, quiz_enabled, ta_enabled
+            FROM labs
+            WHERE token = ?
+            """,
+            (token,),
         ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Lab not found")
-    return {"lab_name": row["lab_name"], "model": row["model"]}
+    return {
+        "lab_name": row["lab_name"],
+        "model": row["model"],
+        "quiz_enabled": bool(row["quiz_enabled"]),
+        "ta_enabled": bool(row["ta_enabled"]),
+    }
 
 
 @app.get("/api/instructor/labs")
@@ -318,6 +379,8 @@ async def get_instructor_labs():
                 l.lab_name,
                 l.created_at,
                 l.chat_logging_enabled,
+                l.quiz_enabled,
+                l.ta_enabled,
                 COUNT(DISTINCT q.id) AS quiz_count,
                 MAX(CASE WHEN q.status = 'published' THEN q.status ELSE NULL END)
                     AS active_quiz_status,
@@ -325,7 +388,8 @@ async def get_instructor_labs():
             FROM labs l
             LEFT JOIN quizzes q ON q.token = l.token
             LEFT JOIN chat_logs cl ON cl.token = l.token
-            GROUP BY l.token, l.lab_name, l.created_at, l.chat_logging_enabled
+            GROUP BY l.token, l.lab_name, l.created_at, l.chat_logging_enabled,
+                     l.quiz_enabled, l.ta_enabled
             ORDER BY l.created_at DESC, l.token DESC
             """
         ).fetchall()
@@ -341,6 +405,8 @@ async def get_instructor_labs():
                 "student_url": f"/lab/{token}",
                 "instructor_url": f"/instructor/{token}",
                 "chat_logging_enabled": bool(row["chat_logging_enabled"]),
+                "quiz_enabled": bool(row["quiz_enabled"]),
+                "ta_enabled": bool(row["ta_enabled"]),
                 "created_at": row["created_at"],
                 "quiz_count": quiz_count,
                 "has_quizzes": quiz_count > 0,
@@ -356,7 +422,7 @@ async def get_instructor_lab(token: str):
     with get_db() as conn:
         lab = conn.execute(
             """
-            SELECT lab_name, model, chat_logging_enabled
+            SELECT lab_name, model, chat_logging_enabled, quiz_enabled, ta_enabled
             FROM labs
             WHERE token = ?
             """,
@@ -391,7 +457,27 @@ async def get_instructor_lab(token: str):
         "student_url": f"/lab/{token}",
         "instructor_url": f"/instructor/{token}",
         "chat_logging_enabled": bool(lab["chat_logging_enabled"]),
+        "quiz_enabled": bool(lab["quiz_enabled"]),
+        "ta_enabled": bool(lab["ta_enabled"]),
         "active_quiz": active_quiz,
+    }
+
+
+@app.patch("/api/instructor/lab/{token}/features")
+async def update_lab_features(token: str, req: FeatureUpdateRequest):
+    with get_db() as conn:
+        row = conn.execute("SELECT 1 FROM labs WHERE token = ?", (token,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Lab not found")
+        conn.execute(
+            "UPDATE labs SET quiz_enabled = ?, ta_enabled = ? WHERE token = ?",
+            (1 if req.quiz_enabled else 0, 1 if req.ta_enabled else 0, token),
+        )
+        conn.commit()
+    return {
+        "token": token,
+        "quiz_enabled": req.quiz_enabled,
+        "ta_enabled": req.ta_enabled,
     }
 
 
@@ -400,7 +486,7 @@ async def chat(token: str, req: ChatRequest):
     with get_db() as conn:
         row = conn.execute(
             """
-            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled
+            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled, ta_enabled
             FROM labs
             WHERE token = ?
             """,
@@ -408,6 +494,8 @@ async def chat(token: str, req: ChatRequest):
         ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Lab not found")
+    if not row["ta_enabled"]:
+        raise _disabled_error("Socratic TA")
 
     system_prompt = build_system_prompt(row["lab_name"], row["lab_content"])
     full_history = req.history + [{"role": "user", "text": req.message}]
@@ -507,11 +595,10 @@ def _get_quiz_questions(conn: sqlite3.Connection, quiz_id: int, include_answer_d
 @app.post("/quiz/generate")
 async def quiz_generate(req: GenerateQuizRequest):
     with get_db() as conn:
+        require_quiz_enabled_for_token(conn, req.token)
         row = conn.execute(
             "SELECT lab_content, api_key FROM labs WHERE token = ?", (req.token,)
         ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Lab not found")
     if not row["lab_content"] or not row["lab_content"].strip():
         raise HTTPException(status_code=400, detail="No document text available for this lab")
     if not (3 <= req.n_questions <= 10):
@@ -561,6 +648,7 @@ async def quiz_generate(req: GenerateQuizRequest):
 @app.get("/quiz/active/{token}")
 async def quiz_active(token: str):
     with get_db() as conn:
+        require_quiz_enabled_for_token(conn, token)
         row = conn.execute(
             "SELECT id FROM quizzes WHERE token = ? AND status = 'published'", (token,)
         ).fetchone()
@@ -575,9 +663,7 @@ async def quiz_active(token: str):
 @app.get("/quiz/{quiz_id}")
 async def quiz_get(quiz_id: int):
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Quiz not found")
+        row = require_quiz_enabled_for_quiz(conn, quiz_id)
     with get_db() as conn:
         questions = _get_quiz_questions(conn, quiz_id, include_answer_data=True)
     return {"quiz_id": quiz_id, "token": row["token"], "status": row["status"], "questions": questions}
@@ -586,9 +672,7 @@ async def quiz_get(quiz_id: int):
 @app.put("/quiz/{quiz_id}")
 async def quiz_update(quiz_id: int, req: UpdateQuizRequest):
     with get_db() as conn:
-        row = conn.execute("SELECT status FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Quiz not found")
+        row = require_quiz_enabled_for_quiz(conn, quiz_id)
     if row["status"] != "draft":
         raise HTTPException(status_code=400, detail="Only draft quizzes can be edited")
 
@@ -615,9 +699,7 @@ async def quiz_update(quiz_id: int, req: UpdateQuizRequest):
 @app.post("/quiz/{quiz_id}/publish")
 async def quiz_publish(quiz_id: int):
     with get_db() as conn:
-        row = conn.execute("SELECT token, status FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Quiz not found")
+        row = require_quiz_enabled_for_quiz(conn, quiz_id)
     if row["status"] == "published":
         raise HTTPException(status_code=400, detail="Quiz is already published")
 
@@ -640,9 +722,7 @@ async def quiz_publish(quiz_id: int):
 @app.post("/quiz/{quiz_id}/close")
 async def quiz_close(quiz_id: int):
     with get_db() as conn:
-        row = conn.execute("SELECT status FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Quiz not found")
+        row = require_quiz_enabled_for_quiz(conn, quiz_id)
     if row["status"] != "published":
         raise HTTPException(status_code=400, detail="Only published quizzes can be closed")
     with get_db() as conn:
@@ -654,11 +734,7 @@ async def quiz_close(quiz_id: int):
 @app.post("/quiz/{quiz_id}/submit")
 async def quiz_submit(quiz_id: int, req: SubmitQuizRequest):
     with get_db() as conn:
-        quiz_row = conn.execute(
-            "SELECT status FROM quizzes WHERE id = ?", (quiz_id,)
-        ).fetchone()
-    if not quiz_row:
-        raise HTTPException(status_code=404, detail="Quiz not found")
+        quiz_row = require_quiz_enabled_for_quiz(conn, quiz_id)
     if quiz_row["status"] != "published":
         raise HTTPException(status_code=400, detail="Quiz is not published")
 
@@ -711,9 +787,7 @@ async def quiz_submit(quiz_id: int, req: SubmitQuizRequest):
 @app.get("/quiz/{quiz_id}/stats")
 async def quiz_stats(quiz_id: int):
     with get_db() as conn:
-        row = conn.execute("SELECT status FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Quiz not found")
+        row = require_quiz_enabled_for_quiz(conn, quiz_id)
 
     with get_db() as conn:
         rows = conn.execute(

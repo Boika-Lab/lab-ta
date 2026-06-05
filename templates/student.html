@@ -524,6 +524,8 @@
     const history = [];   // [{role: "user"|"model", text: "..."}]
     let ttsEnabled = true;
     let currentUtterance = null;
+    let quizEnabled = true;
+    let taEnabled = true;
 
     // ── DOM refs ───────────────────────────────────────────────────────────────
     const chatArea  = document.getElementById('chat-area');
@@ -541,11 +543,35 @@
         const data = await res.json();
         labNameEl.textContent = data.lab_name;
         document.title = `Lab TA — ${data.lab_name}`;
+        quizEnabled = data.quiz_enabled;
+        taEnabled = data.ta_enabled;
       } catch (e) {
         labNameEl.textContent = 'Lab TA';
       }
-      await initQuiz();
+      initializeFeatureAvailability();
+      if (quizEnabled) await initQuiz();
     })();
+
+    function initializeFeatureAvailability() {
+      if (!taEnabled) {
+        ttsBtn.style.display = 'none';
+        document.getElementById('input-bar').style.display = 'none';
+      }
+      if (!quizEnabled && !taEnabled) {
+        showStudentUnavailable('No student activities are currently enabled for this lab.');
+      } else if (!quizEnabled && taEnabled) {
+        hideQuizPanel();
+      } else if (quizEnabled && !taEnabled) {
+        chatArea.style.display = 'none';
+      }
+    }
+
+    function showStudentUnavailable(message) {
+      document.getElementById('quiz-panel').style.display = 'none';
+      document.getElementById('input-bar').style.display = 'none';
+      chatArea.style.display = 'flex';
+      chatArea.innerHTML = `<div class="welcome"><strong>${qEsc(message)}</strong></div>`;
+    }
 
     // ── Rendering helpers ──────────────────────────────────────────────────────
     function appendMessage(role, text) {
@@ -749,15 +775,27 @@
     let quizPhase      = 'idle';
 
     async function initQuiz() {
-      if (localStorage.getItem(LS_CLEARED)) return;
+      if (localStorage.getItem(LS_CLEARED)) {
+        if (!taEnabled) showQuizOnlyComplete();
+        return;
+      }
 
       let res;
       try {
         res = await fetch(`/quiz/active/${token}`);
-      } catch { return; }
-      if (!res.ok) return;
+      } catch {
+        if (!taEnabled) showStudentUnavailable('No prelab quiz is currently available for this lab.');
+        return;
+      }
+      if (!res.ok) {
+        if (!taEnabled) showStudentUnavailable('No prelab quiz is currently available for this lab.');
+        return;
+      }
       const data = await res.json();
-      if (!data.quiz_id) return;
+      if (!data.quiz_id) {
+        if (!taEnabled) showStudentUnavailable('No prelab quiz is currently available for this lab.');
+        return;
+      }
 
       quizData = data;
 
@@ -802,7 +840,17 @@
     function hideQuizPanel() {
       document.getElementById('quiz-panel').style.display = 'none';
       document.getElementById('chat-area').style.display  = 'flex';
-      document.getElementById('input-bar').style.display  = 'flex';
+      document.getElementById('input-bar').style.display  = taEnabled ? 'flex' : 'none';
+    }
+
+    function showQuizOnlyComplete() {
+      const panel = document.getElementById('quiz-panel');
+      panel.innerHTML = '';
+      panel.style.display = 'flex';
+      chatArea.style.display = 'none';
+      document.getElementById('input-bar').style.display = 'none';
+      setQuizFeedbackState('success');
+      renderCleared(panel);
     }
 
     function setQuizFeedbackState(state) {
@@ -1014,6 +1062,15 @@
     function renderCleared(panel) {
       const card = document.createElement('div');
       card.className = 'quiz-card';
+      if (!taEnabled) {
+        card.innerHTML = `
+          <div class="quiz-icon">✅</div>
+          <h2>Quiz complete</h2>
+          <p>All correct! There are no additional online activities for this lab right now.</p>
+        `;
+        panel.appendChild(card);
+        return;
+      }
       card.innerHTML = `
         <div class="quiz-icon">✅</div>
         <h2>You're cleared!</h2>
@@ -1024,7 +1081,7 @@
     }
 
     function proceedToChat() {
-      hideQuizPanel();
+      if (taEnabled) hideQuizPanel();
     }
 
     // ── PWA: Add to Home Screen prompt ────────────────────────────────────────

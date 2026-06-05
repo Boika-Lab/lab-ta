@@ -319,6 +319,63 @@
       overflow-wrap: anywhere;
       text-align: right;
     }
+    .feature-settings {
+      margin-top: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .feature-settings-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #333;
+    }
+    .feature-group {
+      border: 1.5px solid #d0d5dd;
+      border-radius: 8px;
+      padding: 0.85rem;
+      background: #f7f9fc;
+    }
+    .feature-group-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #1a4a5e;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.75rem;
+    }
+    .feature-group .checkbox-row {
+      margin-top: 0;
+    }
+    .feature-group .checkbox-row + .checkbox-row {
+      margin-top: 0.9rem;
+    }
+    .feature-note {
+      margin-top: 0.75rem;
+      color: #666;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .feature-status {
+      margin-top: 0.75rem;
+      font-size: 0.84rem;
+      color: #555;
+      line-height: 1.45;
+    }
+    .feature-status strong {
+      color: #1a1a2e;
+    }
+    .disabled-panel {
+      display: none;
+      margin-top: 0.85rem;
+      padding: 0.8rem 0.9rem;
+      background: #f7f9fc;
+      border: 1px solid #e0e5ec;
+      border-radius: 8px;
+      color: #666;
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
     .quiz-export-panel {
       display: none;
       margin-top: 1rem;
@@ -412,13 +469,39 @@
       <input type="file" id="file-input" name="files" multiple accept=".pdf,.pptx,.docx" />
       <ul id="file-list"></ul>
 
-      <div class="checkbox-row">
-        <input type="checkbox" id="chat-logging-enabled" name="chat_logging_enabled" />
-        <label for="chat-logging-enabled">
-          Save anonymous chat logs
-          <span>Stores each student question and TA response for this lab session.</span>
-        </label>
-      </div>
+      <section class="feature-settings" aria-labelledby="lab-features-title">
+        <div class="feature-settings-title" id="lab-features-title">Lab Features</div>
+        <div class="feature-group">
+          <div class="feature-group-title">Quiz Generation</div>
+          <input type="hidden" name="quiz_enabled" value="false" />
+          <div class="checkbox-row">
+            <input type="checkbox" id="quiz-enabled" name="quiz_enabled" value="true" checked />
+            <label for="quiz-enabled">
+              Enable quiz generation
+              <span>Allows instructors to generate and publish prelab quizzes for this lab.</span>
+            </label>
+          </div>
+          <div class="feature-note">Quiz-specific options appear on the instructor dashboard after setup.</div>
+        </div>
+        <div class="feature-group">
+          <div class="feature-group-title">Socratic TA</div>
+          <input type="hidden" name="ta_enabled" value="false" />
+          <div class="checkbox-row">
+            <input type="checkbox" id="ta-enabled" name="ta_enabled" value="true" checked />
+            <label for="ta-enabled">
+              Enable Socratic TA
+              <span>Allows students to chat with the lab teaching assistant.</span>
+            </label>
+          </div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="chat-logging-enabled" name="chat_logging_enabled" />
+            <label for="chat-logging-enabled">
+              Save anonymous chat logs
+              <span>Stores each student question and TA response for this lab session.</span>
+            </label>
+          </div>
+        </div>
+      </section>
 
       <button type="submit" class="btn-primary" id="submit-btn">Generate Student TA Link</button>
     </form>
@@ -444,6 +527,38 @@
       <p class="hint-text">
         Share this link or QR code with your students. Each student opens it on their device — no login or installation required.
       </p>
+
+      <div class="logs-panel" id="feature-availability-panel">
+        <div style="font-size:1rem;font-weight:700;color:#1a1a2e;margin-bottom:0.85rem;">Feature Availability</div>
+        <div class="feature-settings" style="margin-top:0;">
+          <div class="feature-group">
+            <div class="feature-group-title">Quiz Generation</div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="dashboard-quiz-enabled" checked />
+              <label for="dashboard-quiz-enabled">
+                Enable quiz generation
+                <span>Controls instructor quiz tools and student prelab quiz access.</span>
+              </label>
+            </div>
+            <div class="feature-status" id="quiz-feature-status"></div>
+          </div>
+          <div class="feature-group">
+            <div class="feature-group-title">Socratic TA</div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="dashboard-ta-enabled" checked />
+              <label for="dashboard-ta-enabled">
+                Enable Socratic TA
+                <span>Controls student chat, voice input, and TA responses.</span>
+              </label>
+            </div>
+            <div class="feature-status" id="ta-feature-status"></div>
+          </div>
+        </div>
+        <button class="btn-secondary" id="save-features-btn" style="margin-top:0.9rem;font-size:0.85rem;padding:0.45rem 0.9rem;min-width:0;" onclick="saveFeatureAvailability()">
+          Save Feature Availability
+        </button>
+        <div id="feature-save-status" style="margin-top:0.65rem;color:#666;font-size:0.84rem;"></div>
+      </div>
 
       <div class="logs-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;margin-bottom:0.85rem;">
@@ -481,6 +596,9 @@
         </div>
 
         <div id="quiz-error" style="display:none;margin-top:0.75rem;padding:0.75rem 1rem;background:#fff0f0;border:1px solid #f5c6cb;border-radius:8px;color:#c0392b;font-size:0.9rem;"></div>
+        <div id="quiz-disabled-state" class="disabled-panel">
+          Quiz generation is disabled for this lab. Existing quiz data is preserved and will be available again when quiz generation is re-enabled.
+        </div>
 
         <div id="quiz-draft-editor" style="display:none;">
           <div id="questions-list"></div>
@@ -544,12 +662,18 @@
     let studentUrl = '';
     let currentToken = '';
     let currentLabName = '';
+    let quizEnabled = true;
+    let taEnabled = true;
+    let chatLoggingEnabled = false;
     let lastChatLogs = null;
 
     function renderDashboard(data) {
       studentUrl = window.location.origin + data.student_url;
       currentToken = data.token;
       currentLabName = data.lab_name;
+      quizEnabled = data.quiz_enabled;
+      taEnabled = data.ta_enabled;
+      chatLoggingEnabled = data.chat_logging_enabled;
       lastChatLogs = null;
 
       document.getElementById('setup-form').style.display = 'none';
@@ -562,9 +686,8 @@
       document.getElementById('student-url').textContent = studentUrl;
       document.getElementById('qr-img').src =
         `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(studentUrl)}&size=200x200`;
-      document.getElementById('logs-output').textContent = data.chat_logging_enabled
-        ? 'Use Refresh to load anonymous chat logs for this lab.'
-        : 'Chat logging is disabled for this lab.';
+      renderChatLogStatus();
+      renderFeatureAvailability();
 
       document.getElementById('quiz-error').style.display = 'none';
       document.getElementById('quiz-gen-loading').style.display = 'none';
@@ -572,7 +695,11 @@
       document.getElementById('stats-panel').style.display = 'none';
       hideQuizExport();
 
-      if (data.active_quiz) {
+      if (!quizEnabled) {
+        currentQuizId = data.active_quiz ? data.active_quiz.quiz_id : null;
+        publishedQuizId = data.active_quiz ? data.active_quiz.quiz_id : null;
+        showQuizDisabledState();
+      } else if (data.active_quiz) {
         currentQuizId = data.active_quiz.quiz_id;
         publishedQuizId = data.active_quiz.quiz_id;
         document.getElementById('quiz-gen-controls').style.display = 'none';
@@ -580,9 +707,83 @@
       } else {
         currentQuizId = null;
         publishedQuizId = null;
+        document.getElementById('quiz-disabled-state').style.display = 'none';
         document.getElementById('quiz-published-state').style.display = 'none';
         document.getElementById('stats-btn').style.display = 'none';
         document.getElementById('quiz-gen-controls').style.display = 'block';
+      }
+    }
+
+    function renderFeatureAvailability() {
+      document.getElementById('dashboard-quiz-enabled').checked = quizEnabled;
+      document.getElementById('dashboard-ta-enabled').checked = taEnabled;
+      document.getElementById('quiz-feature-status').innerHTML = quizEnabled
+        ? '<strong>Enabled.</strong> Instructors can manage quizzes and students can take active published quizzes.'
+        : '<strong>Disabled.</strong> Quiz tools and student quiz access are paused; existing quiz data is preserved.';
+      document.getElementById('ta-feature-status').innerHTML = taEnabled
+        ? '<strong>Enabled.</strong> Students can chat with the Socratic TA after any required quiz is cleared.'
+        : '<strong>Disabled.</strong> Student chat, voice input, and TA responses are hidden and blocked.';
+    }
+
+    function renderChatLogStatus() {
+      document.getElementById('logs-output').textContent = chatLoggingEnabled
+        ? (taEnabled
+          ? 'Use Refresh to load anonymous chat logs for this lab.'
+          : 'Socratic TA is disabled for this lab. Chat logging will resume when it is re-enabled.')
+        : 'Chat logging is disabled for this lab.';
+    }
+
+    function showQuizDisabledState() {
+      document.getElementById('quiz-gen-controls').style.display = 'none';
+      document.getElementById('quiz-gen-loading').style.display = 'none';
+      document.getElementById('quiz-draft-editor').style.display = 'none';
+      document.getElementById('quiz-published-state').style.display = 'none';
+      document.getElementById('stats-panel').style.display = 'none';
+      document.getElementById('stats-btn').style.display = 'none';
+      document.getElementById('quiz-disabled-state').style.display = 'block';
+      hideQuizExport();
+    }
+
+    function showQuizEnabledState() {
+      document.getElementById('quiz-disabled-state').style.display = 'none';
+      if (publishedQuizId) {
+        document.getElementById('quiz-gen-controls').style.display = 'none';
+        showPublishedState();
+      } else {
+        document.getElementById('quiz-published-state').style.display = 'none';
+        document.getElementById('stats-btn').style.display = 'none';
+        document.getElementById('quiz-gen-controls').style.display = 'block';
+      }
+    }
+
+    async function saveFeatureAvailability() {
+      if (!currentToken) return;
+      const btn = document.getElementById('save-features-btn');
+      const status = document.getElementById('feature-save-status');
+      btn.disabled = true;
+      status.textContent = 'Saving...';
+      try {
+        const res = await fetch(`/api/instructor/lab/${currentToken}/features`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quiz_enabled: document.getElementById('dashboard-quiz-enabled').checked,
+            ta_enabled: document.getElementById('dashboard-ta-enabled').checked,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+        quizEnabled = data.quiz_enabled;
+        taEnabled = data.ta_enabled;
+        renderFeatureAvailability();
+        if (quizEnabled) showQuizEnabledState();
+        else showQuizDisabledState();
+        status.textContent = 'Feature availability saved.';
+        renderChatLogStatus();
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
       }
     }
 
@@ -616,6 +817,8 @@
       document.getElementById('loading').style.display = 'flex';
 
       const data = new FormData(form);
+      data.set('quiz_enabled', document.getElementById('quiz-enabled').checked ? 'true' : 'false');
+      data.set('ta_enabled', document.getElementById('ta-enabled').checked ? 'true' : 'false');
 
       try {
         const res = await fetch('/api/configure', { method: 'POST', body: data });
@@ -731,6 +934,7 @@
       document.getElementById('quiz-gen-controls').style.display = 'none';
       document.getElementById('quiz-gen-loading').style.display = 'block';
       document.getElementById('quiz-draft-editor').style.display = 'none';
+      document.getElementById('quiz-disabled-state').style.display = 'none';
       hideQuizExport();
 
       try {
@@ -949,6 +1153,7 @@
     }
 
     function showPublishedState() {
+      document.getElementById('quiz-disabled-state').style.display = 'none';
       document.getElementById('quiz-draft-editor').style.display = 'none';
       document.getElementById('quiz-published-state').style.display = 'block';
       document.getElementById('stats-btn').style.display = '';
@@ -997,6 +1202,7 @@
         document.getElementById('stats-panel').style.display = 'none';
         document.getElementById('stats-btn').style.display = 'none';
         document.getElementById('quiz-error').style.display = 'none';
+        document.getElementById('quiz-disabled-state').style.display = 'none';
         hideQuizExport();
         document.getElementById('quiz-gen-controls').style.display = 'block';
       } catch (err) {

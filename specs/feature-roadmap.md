@@ -11,6 +11,8 @@ future feature areas.
 - Unique eight-character student tokens and shareable `/lab/{token}` URLs.
 - Durable unauthenticated instructor dashboard URLs at `/instructor/{token}`.
 - Instructor dashboard hydration through `GET /api/instructor/lab/{token}`.
+- Per-lab Quiz Generation and Socratic TA availability controls, editable at
+  setup time and later from the instructor dashboard.
 - Saved-labs index at `/instructor/labs` with lookup data from
   `GET /api/instructor/labs`.
 - QR code display and copy/open-link controls for student access.
@@ -58,6 +60,8 @@ future feature areas.
   dashboard route contracts and hydration behavior.
 - Completed Instructor Lab Index spec, including saved-lab lookup and
   dashboard/student links.
+- Completed Lab Feature Availability spec, including grouped Quiz Generation
+  and Socratic TA controls.
 - Completed Quiz Question Export spec, including read-only student and
   answer-key export text with copy controls.
 - Completed Quiz Answer Consistency spec, including prompt instructions that
@@ -103,6 +107,28 @@ its dashboard and student URL.
 
 - No search, filtering, pagination, archiving, deletion, or editing.
 - No authentication or access-control change.
+
+### Lab Feature Availability
+
+Let instructors independently enable or disable Quiz Generation and Socratic TA
+for each lab.
+
+#### Implemented Behavior
+
+- New and legacy labs default to both features enabled.
+- The setup form shows a Lab Features area with separate Quiz Generation and
+  Socratic TA groups.
+- The instructor dashboard shows matching Feature Availability controls for
+  later edits.
+- Disabled feature APIs return `403`.
+- Quiz-disabled labs preserve existing quiz data and stats.
+- Student pages handle both enabled, quiz-only, TA-only, and both-disabled
+  states.
+
+#### Non-Goals
+
+- No authentication or access-control change.
+- No destructive deletion or auto-closing of disabled quiz data.
 
 ### Quiz Question Export
 

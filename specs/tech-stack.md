@@ -27,8 +27,8 @@ not a target architecture.
 - Server-rendered static HTML templates in `templates/`.
 - `templates/instructor.html`: instructor setup, file upload, optional chat log
   checkbox, durable dashboard hydration for `/instructor/{token}`, student
-  link, QR code, chat log export, saved-labs link, quiz generation, quiz
-  publishing, and stats UI.
+  link, QR code, chat log export, saved-labs link, grouped feature availability
+  controls, quiz generation, quiz publishing, and stats UI.
 - `templates/instructor_labs.html`: saved-labs index that fetches
   `/api/instructor/labs` and links to instructor dashboard and student URLs.
 - `templates/student.html`: student chat UI, voice input, text-to-speech,
@@ -63,8 +63,8 @@ not a target architecture.
 - Pytest contract tests live in `tests/`.
 - Tests mock Gemini-facing functions and use isolated SQLite databases.
 - Static template tests verify important UI wiring such as chat logging controls
-  instructor dashboard hydration, saved-labs links, and browser-local session
-  IDs.
+  instructor dashboard hydration, saved-labs links, feature availability
+  controls, and browser-local session IDs.
 - The current verification command is `python -m pytest`.
 
 ## Environment Variables

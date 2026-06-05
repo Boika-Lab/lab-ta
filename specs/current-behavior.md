@@ -14,8 +14,8 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 
 - `GET /` serves the instructor portal.
 - `POST /api/configure` accepts `api_key`, `lab_name`, and zero or more PDF,
-  PPTX, or DOCX files. It also accepts an optional `chat_logging_enabled`
-  checkbox field.
+  PPTX, or DOCX files. It also accepts optional `quiz_enabled`, `ta_enabled`,
+  and `chat_logging_enabled` checkbox fields.
 - Uploaded documents are parsed into plain text and stored with a generated
   eight-character lab token.
 - Persistent chat logging is disabled unless the instructor explicitly enables
@@ -44,15 +44,21 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - The instructor dashboard result panel includes chat log controls. Refresh
   loads the current JSON-backed log view for that token, and Download JSON
   exports the same data.
+- The instructor setup form and dashboard show separate Quiz Generation and
+  Socratic TA feature groups. Both features default to enabled, and instructors
+  can edit both flags later from the dashboard.
 
 ## Student Chat
 
 - `GET /lab/{token}` serves the student chat page.
 - `GET /api/lab/{token}` returns the lab name and model for known tokens, and
-  `404` for unknown tokens.
+  `404` for unknown tokens. It also returns whether quiz and Socratic TA
+  features are enabled.
 - `POST /api/chat/{token}` accepts a message, prior history, and optional
   anonymous browser session ID. It screens the message for prompt-injection
   attempts, then calls the TA model only when the screen passes.
+- When Socratic TA is disabled, chat requests return `403` and do not call
+  screening or TA generation.
 - Blocked messages return a neutral refusal: `I can only help with questions
   about this lab activity.`
 - Unknown lab tokens return `404`.
@@ -72,6 +78,8 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Existing SQLite databases with a `labs` table missing
   `chat_logging_enabled` are upgraded in place with
   `chat_logging_enabled INTEGER NOT NULL DEFAULT 0`.
+- Existing SQLite databases with a `labs` table missing `quiz_enabled` or
+  `ta_enabled` are upgraded in place with both feature flags enabled.
 - `chat_logs` stores one row per logged exchange with `token`, `session_id`,
   `exchange_index`, `question_at`, `question`, `response`, and `blocked`.
 - Chat exchange ordering is maintained per `(token, session_id)` through
@@ -107,6 +115,8 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 ## Prelab Quiz
 
 - `POST /quiz/generate` creates a draft quiz for a known lab with document text.
+- Quiz operations return `403` when quiz generation is disabled for the owning
+  lab. Existing quiz data is preserved while disabled.
 - The requested question count must be between 3 and 10.
 - Generated quiz questions are stored with choices A-D, a correct answer, an
   explanation, and initial anonymous stats.

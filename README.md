@@ -234,7 +234,9 @@ instructor dashboard and student URL.
 | **Google API Key** | Paste your API key from [Google AI Studio](https://aistudio.google.com/apikey). It starts with `AIza...`. This is stored securely on the server and never shown to students. |
 | **Lab Name** | A short descriptive name, e.g. `Electrochemistry Lab` or `Enzyme Kinetics`. This appears in the student chat header. |
 | **Lab Documents** | Upload one or more files in **PDF, PPTX, or DOCX** format. You can select multiple files at once. The TA will base all its guidance exclusively on the content of these files. |
-| **Save anonymous chat logs** | Optional. When checked, completed student chat exchanges are stored locally and can be refreshed or downloaded as JSON from the instructor page. |
+| **Quiz Generation** | Enabled by default. Uncheck this if students should not see or take a prelab quiz for this lab. |
+| **Socratic TA** | Enabled by default. Uncheck this if students should not chat with the TA for this lab. |
+| **Save anonymous chat logs** | Optional Socratic TA setting. When checked, completed student chat exchanges are stored locally and can be refreshed or downloaded as JSON from the instructor page. |
 
 ### Step 3 — Generate the Student Link
 
@@ -247,9 +249,11 @@ new instructor dashboard. There you will see:
   `https://your-machine-name.tail766770.ts.net/instructor/aB3xY9qR`
 - A **QR code** students can scan with their phone
 - A **Copy Link** button to copy the URL to your clipboard
+- **Feature Availability** controls for editing Quiz Generation and Socratic TA
+  availability later
 - Optional **Chat Logs** controls if anonymous logging was enabled for this lab
 
-You can refresh or reopen the instructor dashboard URL later to recover the student link, QR code, chat log controls, published quiz status, and quiz stats access. Draft quiz recovery is not supported in the first dashboard version.
+You can refresh or reopen the instructor dashboard URL later to recover the student link, QR code, feature availability controls, chat log controls, published quiz status, and quiz stats access. Draft quiz recovery is not supported in the first dashboard version.
 
 ### Step 4 — Share with Students
 
@@ -268,7 +272,12 @@ Students can open it on any device — phone, tablet, or laptop — in Chrome, w
 
 ### Opening the Chat
 
-Students open the URL shared by the instructor in **Chrome**. The TA will greet them and introduce the lab.
+Students open the URL shared by the instructor in **Chrome**. What they see depends on the lab features enabled by the instructor:
+
+- If both Quiz Generation and Socratic TA are enabled, students pass any active prelab quiz before chatting.
+- If only Quiz Generation is enabled, students complete the quiz and then see a completion message with no chat controls.
+- If only Socratic TA is enabled, students can chat immediately.
+- If both features are disabled, students see the lab name and a message that no student activities are currently enabled.
 
 ### Asking Questions — Text
 

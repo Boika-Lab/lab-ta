@@ -35,13 +35,16 @@ def insert_lab(
     lab_name: str = "Electrochemistry",
     content: str = "Lab safety notes",
     chat_logging_enabled: bool = False,
+    quiz_enabled: bool = True,
+    ta_enabled: bool = True,
     created_at: str = "2026-05-15T00:00:00",
 ) -> str:
     with main.get_db() as conn:
         conn.execute(
             "INSERT INTO labs "
-            "(token, lab_name, lab_content, api_key, model, created_at, chat_logging_enabled) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(token, lab_name, lab_content, api_key, model, created_at, "
+            "chat_logging_enabled, quiz_enabled, ta_enabled) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
                 lab_name,
@@ -50,6 +53,8 @@ def insert_lab(
                 llm_config.CHAT_MODEL,
                 created_at,
                 1 if chat_logging_enabled else 0,
+                1 if quiz_enabled else 0,
+                1 if ta_enabled else 0,
             ),
         )
         conn.commit()
@@ -104,7 +109,8 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     with main.get_db() as conn:
         row = conn.execute(
             """
-            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled
+            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled,
+                   quiz_enabled, ta_enabled
             FROM labs
             WHERE token = ?
             """,
@@ -115,6 +121,8 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     assert row["api_key"] == "test-key"
     assert row["model"] == llm_config.CHAT_MODEL
     assert row["chat_logging_enabled"] == 0
+    assert row["quiz_enabled"] == 1
+    assert row["ta_enabled"] == 1
 
 
 def test_configure_stores_configured_chat_model(client):
@@ -149,6 +157,28 @@ def test_configure_checked_stores_chat_logging_enabled(client):
     assert row["chat_logging_enabled"] == 1
 
 
+def test_configure_unchecked_feature_controls_store_disabled_flags(client):
+    response = client.post(
+        "/api/configure",
+        data={
+            "api_key": "test-key",
+            "lab_name": "Kinetics",
+            "quiz_enabled": "false",
+            "ta_enabled": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    token = response.json()["token"]
+    with main.get_db() as conn:
+        row = conn.execute(
+            "SELECT quiz_enabled, ta_enabled FROM labs WHERE token = ?",
+            (token,),
+        ).fetchone()
+    assert row["quiz_enabled"] == 0
+    assert row["ta_enabled"] == 0
+
+
 def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
     tmp_path, monkeypatch
 ):
@@ -179,13 +209,17 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
             row["name"] for row in conn.execute("PRAGMA table_info(labs)").fetchall()
         }
         row = conn.execute(
-            "SELECT chat_logging_enabled FROM labs WHERE token = 'legacy1'"
+            "SELECT chat_logging_enabled, quiz_enabled, ta_enabled FROM labs WHERE token = 'legacy1'"
         ).fetchone()
         logs_table = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='chat_logs'"
         ).fetchone()
     assert "chat_logging_enabled" in columns
+    assert "quiz_enabled" in columns
+    assert "ta_enabled" in columns
     assert row["chat_logging_enabled"] == 0
+    assert row["quiz_enabled"] == 1
+    assert row["ta_enabled"] == 1
     assert logs_table is not None
 
 
@@ -208,6 +242,8 @@ def test_lab_info_returns_contract_and_404(client):
     assert response.json() == {
         "lab_name": "Electrochemistry",
         "model": llm_config.CHAT_MODEL,
+        "quiz_enabled": True,
+        "ta_enabled": True,
     }
 
     missing = client.get("/api/lab/missing")
@@ -289,6 +325,8 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(client):
         "student_url": f"/lab/{newer}",
         "instructor_url": f"/instructor/{newer}",
         "chat_logging_enabled": True,
+        "quiz_enabled": True,
+        "ta_enabled": True,
         "created_at": "2026-05-15T09:00:00",
         "quiz_count": 2,
         "has_quizzes": True,
@@ -301,6 +339,8 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(client):
         "student_url": f"/lab/{older}",
         "instructor_url": f"/instructor/{older}",
         "chat_logging_enabled": False,
+        "quiz_enabled": True,
+        "ta_enabled": True,
         "created_at": "2026-05-14T09:00:00",
         "quiz_count": 1,
         "has_quizzes": True,
@@ -325,6 +365,8 @@ def test_instructor_lab_api_returns_dashboard_hydration_without_active_quiz(clie
         "student_url": f"/lab/{token}",
         "instructor_url": f"/instructor/{token}",
         "chat_logging_enabled": True,
+        "quiz_enabled": True,
+        "ta_enabled": True,
         "active_quiz": None,
     }
 
@@ -361,6 +403,36 @@ def test_instructor_lab_api_returns_published_quiz_for_stats_recovery(client):
     assert active_quiz["quiz_id"] != draft.lastrowid
 
 
+def test_instructor_lab_feature_patch_updates_flags_and_404(client):
+    token = insert_lab()
+
+    response = client.patch(
+        f"/api/instructor/lab/{token}/features",
+        json={"quiz_enabled": False, "ta_enabled": False},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "token": token,
+        "quiz_enabled": False,
+        "ta_enabled": False,
+    }
+    with main.get_db() as conn:
+        row = conn.execute(
+            "SELECT quiz_enabled, ta_enabled FROM labs WHERE token = ?",
+            (token,),
+        ).fetchone()
+    assert row["quiz_enabled"] == 0
+    assert row["ta_enabled"] == 0
+
+    missing = client.patch(
+        "/api/instructor/lab/missing/features",
+        json={"quiz_enabled": True, "ta_enabled": True},
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Lab not found"
+
+
 def test_blocked_chat_does_not_call_ta_generation(client, monkeypatch):
     token = insert_lab()
     ta_called = False
@@ -390,6 +462,35 @@ def test_blocked_chat_does_not_call_ta_generation(client, monkeypatch):
     with main.get_db() as conn:
         count = conn.execute("SELECT COUNT(*) AS n FROM chat_logs").fetchone()["n"]
     assert count == 0
+
+
+def test_disabled_ta_chat_returns_403_without_screening_or_generation(client, monkeypatch):
+    token = insert_lab(ta_enabled=False)
+    screen_called = False
+    ta_called = False
+
+    async def fake_screen(api_key, token, message):
+        nonlocal screen_called
+        screen_called = True
+        return True
+
+    async def fake_ta_response(**kwargs):
+        nonlocal ta_called
+        ta_called = True
+        return "This should not be called"
+
+    monkeypatch.setattr(main, "screen_message", fake_screen)
+    monkeypatch.setattr(main, "get_ta_response", fake_ta_response)
+
+    response = client.post(
+        f"/api/chat/{token}",
+        json={"message": "Can I ask?", "history": []},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Socratic TA is disabled for this lab"
+    assert screen_called is False
+    assert ta_called is False
 
 
 def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
@@ -773,6 +874,59 @@ def test_quiz_lifecycle_active_submit_and_stats(client, monkeypatch):
     assert submit_closed.json()["detail"] == "Quiz is not published"
 
 
+def test_disabled_quiz_routes_return_403_and_preserve_data(client, monkeypatch):
+    token = insert_lab()
+
+    async def fake_generate_quiz(api_key, document_text, n_questions):
+        return sample_questions(n_questions)
+
+    monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
+
+    generated = client.post("/quiz/generate", json={"token": token, "n_questions": 3})
+    quiz_id = generated.json()["quiz_id"]
+    question_id = generated.json()["questions"][0]["id"]
+    assert client.post(f"/quiz/{quiz_id}/publish").status_code == 200
+
+    disabled = client.patch(
+        f"/api/instructor/lab/{token}/features",
+        json={"quiz_enabled": False, "ta_enabled": True},
+    )
+    assert disabled.status_code == 200
+
+    assert client.get(f"/quiz/active/{token}").status_code == 403
+    assert client.get(f"/quiz/{quiz_id}").status_code == 403
+    assert client.get(f"/quiz/{quiz_id}/stats").status_code == 403
+    assert client.post(
+        f"/quiz/{quiz_id}/submit",
+        json={"answers": {str(question_id): "B"}},
+    ).status_code == 403
+    assert client.post(f"/quiz/{quiz_id}/close").status_code == 403
+
+    generation_called = False
+
+    async def should_not_generate(api_key, document_text, n_questions):
+        nonlocal generation_called
+        generation_called = True
+        return sample_questions(n_questions)
+
+    monkeypatch.setattr(main, "generate_quiz", should_not_generate)
+    generate_disabled = client.post(
+        "/quiz/generate", json={"token": token, "n_questions": 3}
+    )
+    assert generate_disabled.status_code == 403
+    assert generate_disabled.json()["detail"] == "Quiz is disabled for this lab"
+    assert generation_called is False
+
+    reenabled = client.patch(
+        f"/api/instructor/lab/{token}/features",
+        json={"quiz_enabled": True, "ta_enabled": True},
+    )
+    assert reenabled.status_code == 200
+    restored = client.get(f"/quiz/{quiz_id}")
+    assert restored.status_code == 200
+    assert restored.json()["quiz_id"] == quiz_id
+
+
 def test_only_one_published_quiz_per_lab(client, monkeypatch):
     token = insert_lab()
 
@@ -821,10 +975,23 @@ def test_student_quiz_completion_feedback_hooks_exist():
 def test_instructor_chat_logging_checkbox_exists():
     template = Path("templates/instructor.html").read_text()
 
+    assert "Lab Features" in template
+    assert "Quiz Generation" in template
+    assert "Socratic TA" in template
+    assert 'id="quiz-enabled"' in template
+    assert 'name="quiz_enabled"' in template
+    assert 'id="ta-enabled"' in template
+    assert 'name="ta_enabled"' in template
+    assert 'id="quiz-enabled" name="quiz_enabled" value="true" checked' in template
+    assert 'id="ta-enabled" name="ta_enabled" value="true" checked' in template
     assert 'id="chat-logging-enabled"' in template
     assert 'name="chat_logging_enabled"' in template
     assert 'type="checkbox"' in template
+    socratic_group = template[template.index("Socratic TA"):template.index('id="submit-btn"')]
+    assert "chat-logging-enabled" in socratic_group
     assert "new FormData(form)" in template
+    assert "data.set('quiz_enabled', document.getElementById('quiz-enabled').checked ? 'true' : 'false')" in template
+    assert "data.set('ta_enabled', document.getElementById('ta-enabled').checked ? 'true' : 'false')" in template
     assert "function loadChatLogs()" in template
     assert "function downloadChatLogs()" in template
     assert "/api/chat-logs/${currentToken}" in template
@@ -842,6 +1009,26 @@ def test_instructor_dashboard_hydration_hooks_exist():
     assert "data.active_quiz.quiz_id" in template
     assert "publishedQuizId = data.active_quiz.quiz_id" in template
     assert "document.getElementById('quiz-gen-controls').style.display = 'block'" in template
+    assert 'id="dashboard-quiz-enabled"' in template
+    assert 'id="dashboard-ta-enabled"' in template
+    assert "function saveFeatureAvailability()" in template
+    assert "fetch(`/api/instructor/lab/${currentToken}/features`" in template
+    assert "quiz_enabled: document.getElementById('dashboard-quiz-enabled').checked" in template
+    assert "ta_enabled: document.getElementById('dashboard-ta-enabled').checked" in template
+    assert "showQuizDisabledState()" in template
+    assert "let chatLoggingEnabled = false" in template
+    assert "chatLoggingEnabled = data.chat_logging_enabled" in template
+    assert "function renderChatLogStatus()" in template
+    assert "Chat logging is disabled for this lab." in template
+
+    render_start = template.index("function renderDashboard(data)")
+    render_body = template[render_start:template.index("function renderFeatureAvailability()", render_start)]
+    assert "renderChatLogStatus()" in render_body
+
+    save_start = template.index("async function saveFeatureAvailability()")
+    save_body = template[save_start:template.index("async function hydrateInstructorDashboard", save_start)]
+    assert "renderChatLogStatus()" in save_body
+    assert "document.getElementById('logs-output').textContent = taEnabled" not in save_body
 
 
 def test_instructor_quiz_export_hooks_exist():
@@ -911,3 +1098,20 @@ def test_student_chat_session_id_is_stored_per_token_and_sent():
     assert "window.crypto.randomUUID()" in template
     assert "localStorage.setItem(LS_CHAT_SESSION, sessionId)" in template
     assert "session_id: chatSessionId" in template
+
+
+def test_student_feature_availability_hooks_exist():
+    template = Path("templates/student.html").read_text()
+
+    assert "let quizEnabled = true" in template
+    assert "let taEnabled = true" in template
+    assert "quizEnabled = data.quiz_enabled" in template
+    assert "taEnabled = data.ta_enabled" in template
+    assert "function initializeFeatureAvailability()" in template
+    assert "!quizEnabled && !taEnabled" in template
+    assert "!quizEnabled && taEnabled" in template
+    assert "quizEnabled && !taEnabled" in template
+    assert "No student activities are currently enabled for this lab." in template
+    assert "No prelab quiz is currently available for this lab." in template
+    assert "There are no additional online activities for this lab right now." in template
+    assert "document.getElementById('input-bar').style.display  = taEnabled ? 'flex' : 'none'" in template
