@@ -64,6 +64,26 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Unknown lab tokens return `404`.
 - The TA prompt must stay Socratic, use uploaded lab content, and refuse to
   disclose its instructions.
+- Uploaded lab documents are parsed into plain text and stored as a single
+  `labs.lab_content` text value. The app does not store original document
+  binaries, chunk document text, create embeddings, or perform retrieval
+  augmented generation (RAG). On every TA chat request, the server reloads the
+  full stored `lab_content`, renders it into the Gemini system instruction, and
+  sends that system instruction with the current message and browser-provided
+  chat history. The lab content is not only injected at the beginning of a
+  browser chat session.
+- Gemini API context caching documentation states that implicit caching is
+  enabled by default for Gemini 2.5 and newer models and can automatically pass
+  along cost savings when repeated prompt prefixes hit the cache:
+  `https://ai.google.dev/gemini-api/docs/caching`. Because Lab TA places the
+  repeated lab material in the system instruction for each request, this default
+  implicit caching can reduce repeated-context cost in a lab setting where many
+  student sessions share the same lab material. The app does not currently
+  configure explicit Gemini cached content.
+- Excessively long uploaded documents may eventually hit context-length or cost
+  limits because the full parsed text is sent as context for each TA turn. This
+  is not expected to be a typical issue for the lab handouts and articles the
+  app currently targets.
 - When chat logging is enabled for a lab, completed TA exchanges and blocked
   refusals are stored in `chat_logs` with timestamp, session ID, exchange order,
   question, response, and blocked status. Failed TA calls are not logged.
