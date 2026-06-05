@@ -481,6 +481,15 @@ def test_generate_quiz_uses_configured_quiz_model(monkeypatch):
     assert questions[0]["question"] == "Q?"
     assert captured["api_key"] == "test-key"
     assert captured["model"] == llm_config.QUIZ_MODEL
+    assert captured["config"].temperature == 0.7
+
+
+def test_quiz_generation_prompt_requires_answer_label_consistency():
+    prompt = Path("prompts/quiz_generation.md").read_text()
+
+    assert "verify every question" in prompt
+    assert "The \"correct\" value must be the A/B/C/D label" in prompt
+    assert "The explanation must support that same labeled answer choice" in prompt
 
 
 def test_chat_logging_enabled_stores_normal_exchanges_by_session(client, monkeypatch):
@@ -833,6 +842,32 @@ def test_instructor_dashboard_hydration_hooks_exist():
     assert "data.active_quiz.quiz_id" in template
     assert "publishedQuizId = data.active_quiz.quiz_id" in template
     assert "document.getElementById('quiz-gen-controls').style.display = 'block'" in template
+
+
+def test_instructor_quiz_export_hooks_exist():
+    template = Path("templates/instructor.html").read_text()
+
+    assert "Export Quiz" in template
+    assert 'id="quiz-export-panel"' in template
+    assert 'id="quiz-export-student"' in template
+    assert 'id="quiz-export-answer-key"' in template
+    assert "readonly" in template
+    assert "function showQuizExport()" in template
+    assert "function copyQuizExport(kind)" in template
+    assert "navigator.clipboard.writeText(textarea.value)" in template
+
+    assert "function buildQuizExportText(questions, includeAnswerKey)" in template
+    assert "`Quiz: ${currentLabName}`" in template
+    assert "`Quiz: ${currentLabName} - Answer Key`" in template
+    assert "['A', 'B', 'C', 'D'].forEach" in template
+    assert "lines.push(`${choice}. ${q.choices[choice]}`)" in template
+    assert "lines.push(`${correct}. ${q.choices[correct]}`)" in template
+    assert "q.explanation" not in template[
+        template.index("function buildQuizExportText"):template.index("async function getQuestionsForExport")
+    ]
+
+    assert "return collectQuestions()" in template
+    assert "fetch(`/quiz/${id}`)" in template
 
 
 def test_instructor_labs_template_hooks_exist():

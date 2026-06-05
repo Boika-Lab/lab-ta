@@ -110,6 +110,8 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - The requested question count must be between 3 and 10.
 - Generated quiz questions are stored with choices A-D, a correct answer, an
   explanation, and initial anonymous stats.
+- Quiz generation asks Gemini to verify each correct-answer label against its
+  answer text and explanation before returning JSON.
 - `GET /quiz/{quiz_id}` returns draft or published quiz details including answer
   data for instructor use.
 - `PUT /quiz/{quiz_id}` edits draft quiz questions only.
@@ -132,6 +134,13 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Refreshing `/instructor/{token}` restores the active published quiz ID for
   stats access. Draft quiz recovery is not supported in the first persistent
   dashboard version.
+- The instructor quiz panel can export generated questions as read-only,
+  copy/pasteable text. The student-facing export includes numbered questions
+  and choices A-D. The answer-key export includes numbered questions and only
+  the correct answer label plus answer text, such as `B. <choice B>`.
+  Explanations are not included in either export. Draft exports use the current
+  editor values, and published quiz exports remain available after refreshing
+  `/instructor/{token}`.
 
 ## Acceptance Criteria
 

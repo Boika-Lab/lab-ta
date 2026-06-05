@@ -29,6 +29,10 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   instructor dashboard URLs and hydration behavior.
 - `persistent-chat-logs.md` documents opt-in anonymous chat log persistence and
   export behavior.
+- `quiz-answer-consistency.md` documents answer-label consistency prompt
+  requirements for generated prelab quizzes.
+- `quiz-question-export.md` documents copy/pasteable instructor export behavior
+  for generated prelab quiz questions and answer keys.
 - `template.md` is the starting point for future feature or change specs.
 
 ## Test Policy

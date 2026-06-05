@@ -28,6 +28,8 @@ future feature areas.
 - Prelab quiz generation through `POST /quiz/generate`.
 - Draft quiz editing through `PUT /quiz/{quiz_id}`.
 - Quiz publishing, single-active-quiz enforcement, and quiz closing.
+- Instructor quiz export for draft and published quizzes, with copy/pasteable
+  student-facing text and answer-key text.
 - Student quiz gate through `GET /quiz/active/{token}` and
   `POST /quiz/{quiz_id}/submit`.
 - Retry flow for missed quiz questions in the student UI.
@@ -56,6 +58,11 @@ future feature areas.
   dashboard route contracts and hydration behavior.
 - Completed Instructor Lab Index spec, including saved-lab lookup and
   dashboard/student links.
+- Completed Quiz Question Export spec, including read-only student and
+  answer-key export text with copy controls.
+- Completed Quiz Answer Consistency spec, including prompt instructions that
+  ask Gemini to verify correct-answer labels against answer text and
+  explanations before returning JSON.
 - Reusable spec template for future changes.
 - Pytest route-level contract tests.
 - Test database isolation through `LAB_TA_DB_PATH`.
@@ -96,6 +103,53 @@ its dashboard and student URL.
 
 - No search, filtering, pagination, archiving, deletion, or editing.
 - No authentication or access-control change.
+
+### Quiz Question Export
+
+Add an instructor-facing export control for generated prelab quiz questions so
+instructors can copy quiz text without manually selecting fields from the draft
+editor.
+
+#### Implemented Behavior
+
+- Draft quizzes expose an Export Quiz button after generation.
+- Published quizzes expose Export Quiz after dashboard refresh by using the
+  existing instructor quiz detail route.
+- The export panel shows two read-only text areas: a student version with
+  numbered questions and choices A-D, and an answer-key version with numbered
+  questions and the correct answer label plus answer text.
+- The answer-key format preserves answer text, for example `B. <choice B>`.
+- Each export version has an independent Copy button.
+- Draft exports use current editor values. Explanations are excluded from both
+  export versions.
+
+#### Non-Goals
+
+- No new database tables or migrations.
+- No new export API route.
+- No automatic correction of already-generated quiz records.
+
+### Quiz Answer Consistency
+
+Add a prompt-level guard for a generation error observed during testing, where
+an existing generated quiz had correct-answer labels that disagreed with the
+explanations and answer text.
+
+#### Implemented Behavior
+
+- The quiz generation prompt asks Gemini to verify every question before
+  returning JSON.
+- The prompt requires the `correct` label to identify the answer choice that is
+  actually correct.
+- The prompt requires the explanation to support the same labeled answer
+  choice, and instructs Gemini to fix the label before returning if the
+  explanation points to another choice.
+- The existing quiz generation temperature remains `0.7`.
+
+#### Non-Goals
+
+- No post-generation semantic answer validator.
+- No retroactive repair of existing quiz data.
 
 ### Persistent Instructor Lab Dashboard
 

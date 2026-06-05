@@ -319,6 +319,45 @@
       overflow-wrap: anywhere;
       text-align: right;
     }
+    .quiz-export-panel {
+      display: none;
+      margin-top: 1rem;
+      border-top: 1px solid #eee;
+      padding-top: 1rem;
+    }
+    .quiz-export-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.9rem;
+    }
+    .quiz-export-block {
+      background: #f7f9fc;
+      border: 1px solid #e0e5ec;
+      border-radius: 8px;
+      padding: 0.85rem;
+    }
+    .quiz-export-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+    .quiz-export-text {
+      width: 100%;
+      min-height: 180px;
+      padding: 0.7rem;
+      border: 1.5px solid #d0d5dd;
+      border-radius: 7px;
+      background: #fff;
+      color: #1a1a2e;
+      font: 0.85rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      resize: vertical;
+      white-space: pre;
+    }
     @media (max-width: 520px) {
       .model-settings-row {
         grid-template-columns: 1fr;
@@ -445,6 +484,9 @@
 
         <div id="quiz-draft-editor" style="display:none;">
           <div id="questions-list"></div>
+          <button class="btn-secondary" onclick="showQuizExport()" id="export-quiz-btn" style="margin-top:0.4rem;font-size:0.85rem;padding:0.45rem 0.9rem;min-width:0;">
+            Export Quiz
+          </button>
           <button class="btn-primary" onclick="publishQuiz()" id="publish-btn" style="margin-top:1.25rem;">
             Save &amp; Publish Quiz
           </button>
@@ -457,6 +499,28 @@
           <button class="btn-secondary" onclick="closeAndRegenerate()" style="font-size:0.85rem;padding:0.45rem 0.9rem;min-width:0;">
             Close quiz &amp; generate a new one
           </button>
+          <button class="btn-secondary" onclick="showQuizExport()" id="export-published-quiz-btn" style="font-size:0.85rem;padding:0.45rem 0.9rem;min-width:0;margin-left:0.45rem;">
+            Export Quiz
+          </button>
+        </div>
+
+        <div id="quiz-export-panel" class="quiz-export-panel">
+          <div class="quiz-export-grid">
+            <div class="quiz-export-block">
+              <div class="quiz-export-heading">
+                <span>Student Version</span>
+                <button class="btn-secondary" id="copy-student-export-btn" style="padding:0.35rem 0.75rem;min-width:0;font-size:0.82rem;" onclick="copyQuizExport('student')">Copy</button>
+              </div>
+              <textarea id="quiz-export-student" class="quiz-export-text" readonly></textarea>
+            </div>
+            <div class="quiz-export-block">
+              <div class="quiz-export-heading">
+                <span>Answer Key</span>
+                <button class="btn-secondary" id="copy-answer-key-export-btn" style="padding:0.35rem 0.75rem;min-width:0;font-size:0.82rem;" onclick="copyQuizExport('answerKey')">Copy</button>
+              </div>
+              <textarea id="quiz-export-answer-key" class="quiz-export-text" readonly></textarea>
+            </div>
+          </div>
         </div>
 
         <div id="stats-panel" style="display:none;margin-top:1.25rem;"></div>
@@ -479,11 +543,13 @@
 
     let studentUrl = '';
     let currentToken = '';
+    let currentLabName = '';
     let lastChatLogs = null;
 
     function renderDashboard(data) {
       studentUrl = window.location.origin + data.student_url;
       currentToken = data.token;
+      currentLabName = data.lab_name;
       lastChatLogs = null;
 
       document.getElementById('setup-form').style.display = 'none';
@@ -504,6 +570,7 @@
       document.getElementById('quiz-gen-loading').style.display = 'none';
       document.getElementById('quiz-draft-editor').style.display = 'none';
       document.getElementById('stats-panel').style.display = 'none';
+      hideQuizExport();
 
       if (data.active_quiz) {
         currentQuizId = data.active_quiz.quiz_id;
@@ -664,6 +731,7 @@
       document.getElementById('quiz-gen-controls').style.display = 'none';
       document.getElementById('quiz-gen-loading').style.display = 'block';
       document.getElementById('quiz-draft-editor').style.display = 'none';
+      hideQuizExport();
 
       try {
         const res = await fetch('/quiz/generate', {
@@ -746,6 +814,89 @@
       }));
     }
 
+    function normalizeExportQuestions(questions) {
+      return questions.map(q => ({
+        question: q.question,
+        choices: q.choices || {
+          A: q.choice_a,
+          B: q.choice_b,
+          C: q.choice_c,
+          D: q.choice_d,
+        },
+        correct: q.correct,
+      }));
+    }
+
+    function buildQuizExportText(questions, includeAnswerKey) {
+      const normalized = normalizeExportQuestions(questions);
+      const lines = [
+        includeAnswerKey
+          ? `Quiz: ${currentLabName} - Answer Key`
+          : `Quiz: ${currentLabName}`,
+        '',
+      ];
+      normalized.forEach((q, i) => {
+        lines.push(`${i + 1}. ${q.question}`);
+        if (includeAnswerKey) {
+          const correct = q.correct;
+          lines.push(`${correct}. ${q.choices[correct]}`);
+        } else {
+          ['A', 'B', 'C', 'D'].forEach(choice => {
+            lines.push(`${choice}. ${q.choices[choice]}`);
+          });
+        }
+        lines.push('');
+      });
+      return lines.join('\n').trim();
+    }
+
+    async function getQuestionsForExport() {
+      const draftCards = document.querySelectorAll('#questions-list [data-qid]');
+      if (draftCards.length > 0 && document.getElementById('quiz-draft-editor').style.display !== 'none') {
+        return collectQuestions();
+      }
+      const id = publishedQuizId || currentQuizId;
+      if (!id) return [];
+      const res = await fetch(`/quiz/${id}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Quiz export failed');
+      return data.questions;
+    }
+
+    function hideQuizExport() {
+      const panel = document.getElementById('quiz-export-panel');
+      if (panel) panel.style.display = 'none';
+    }
+
+    async function showQuizExport() {
+      try {
+        const questions = await getQuestionsForExport();
+        if (questions.length === 0) {
+          showQuizError('No quiz questions are available to export.');
+          return;
+        }
+        document.getElementById('quiz-export-student').value = buildQuizExportText(questions, false);
+        document.getElementById('quiz-export-answer-key').value = buildQuizExportText(questions, true);
+        document.getElementById('quiz-export-panel').style.display = 'block';
+      } catch (err) {
+        showQuizError('Quiz export failed: ' + err.message);
+      }
+    }
+
+    function copyQuizExport(kind) {
+      const textarea = kind === 'answerKey'
+        ? document.getElementById('quiz-export-answer-key')
+        : document.getElementById('quiz-export-student');
+      const btn = kind === 'answerKey'
+        ? document.getElementById('copy-answer-key-export-btn')
+        : document.getElementById('copy-student-export-btn');
+      navigator.clipboard.writeText(textarea.value).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = original; }, 2000);
+      });
+    }
+
     async function publishQuiz() {
       const questions = collectQuestions();
       if (questions.length === 0) {
@@ -801,6 +952,7 @@
       document.getElementById('quiz-draft-editor').style.display = 'none';
       document.getElementById('quiz-published-state').style.display = 'block';
       document.getElementById('stats-btn').style.display = '';
+      hideQuizExport();
     }
 
     async function showStats() {
@@ -845,6 +997,7 @@
         document.getElementById('stats-panel').style.display = 'none';
         document.getElementById('stats-btn').style.display = 'none';
         document.getElementById('quiz-error').style.display = 'none';
+        hideQuizExport();
         document.getElementById('quiz-gen-controls').style.display = 'block';
       } catch (err) {
         alert('Error: ' + err.message);
