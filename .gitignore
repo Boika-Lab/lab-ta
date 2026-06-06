@@ -1,7 +1,11 @@
 venv/
+.venv/
+env/
 lab_ta.db
+lab_ta.db-*
 __pycache__/
 *.pyc
 .env
 .pytest_cache/
+.idea/
 .DS_Store
