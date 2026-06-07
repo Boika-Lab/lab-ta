@@ -38,11 +38,30 @@ class PromptTemplate:
 
 
 PROMPT_DEFINITIONS: dict[str, tuple[str, frozenset[str]]] = {
-    "ta_system": ("ta_system.md", frozenset({"lab_name", "lab_content"})),
+    "ta_system": (
+        "ta_system.md",
+        frozenset(
+            {
+                "lab_name",
+                "lab_content",
+                "ta_language",
+                "ta_custom_instructions",
+            }
+        ),
+    ),
     "screening": ("screening.md", frozenset({"message"})),
     "quiz_generation": (
         "quiz_generation.md",
-        frozenset({"n_questions", "document_text"}),
+        frozenset(
+            {
+                "n_questions",
+                "document_text",
+                "education_level",
+                "difficulty",
+                "quiz_language",
+                "quiz_custom_instructions",
+            }
+        ),
     ),
 }
 

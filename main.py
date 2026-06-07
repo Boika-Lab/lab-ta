@@ -49,7 +49,12 @@ def init_db() -> None:
                 lab_content TEXT,
                 api_key    TEXT,
                 model      TEXT,
-                created_at TIMESTAMP
+                created_at TIMESTAMP,
+                chat_logging_enabled INTEGER NOT NULL DEFAULT 0,
+                quiz_enabled INTEGER NOT NULL DEFAULT 1,
+                ta_enabled INTEGER NOT NULL DEFAULT 1,
+                ta_language TEXT NOT NULL DEFAULT 'English',
+                ta_custom_instructions TEXT NOT NULL DEFAULT ''
             )
         """)
         lab_columns = {
@@ -67,15 +72,40 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE labs ADD COLUMN ta_enabled INTEGER NOT NULL DEFAULT 1"
             )
+        if "ta_language" not in lab_columns:
+            conn.execute(
+                "ALTER TABLE labs ADD COLUMN ta_language TEXT NOT NULL DEFAULT 'English'"
+            )
+        if "ta_custom_instructions" not in lab_columns:
+            conn.execute(
+                "ALTER TABLE labs ADD COLUMN ta_custom_instructions TEXT NOT NULL DEFAULT ''"
+            )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS quizzes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 token       TEXT NOT NULL,
                 status      TEXT NOT NULL DEFAULT 'draft',
                 n_questions INTEGER NOT NULL,
-                created_at  TIMESTAMP NOT NULL
+                created_at  TIMESTAMP NOT NULL,
+                education_level TEXT NULL,
+                difficulty TEXT NULL,
+                language TEXT NULL,
+                custom_instructions TEXT NOT NULL DEFAULT ''
             )
         """)
+        quiz_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(quizzes)").fetchall()
+        }
+        if "education_level" not in quiz_columns:
+            conn.execute("ALTER TABLE quizzes ADD COLUMN education_level TEXT NULL")
+        if "difficulty" not in quiz_columns:
+            conn.execute("ALTER TABLE quizzes ADD COLUMN difficulty TEXT NULL")
+        if "language" not in quiz_columns:
+            conn.execute("ALTER TABLE quizzes ADD COLUMN language TEXT NULL")
+        if "custom_instructions" not in quiz_columns:
+            conn.execute(
+                "ALTER TABLE quizzes ADD COLUMN custom_instructions TEXT NOT NULL DEFAULT ''"
+            )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS quiz_questions (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,6 +251,10 @@ class ChatRequest(BaseModel):
 class GenerateQuizRequest(BaseModel):
     token: str
     n_questions: int
+    education_level: str
+    difficulty: str
+    language: str
+    custom_instructions: str = ""
 
 
 class FeatureUpdateRequest(BaseModel):
@@ -245,6 +279,35 @@ class UpdateQuizRequest(BaseModel):
 
 class SubmitQuizRequest(BaseModel):
     answers: dict[str, str]
+
+
+def normalize_language(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail=f"{field_name} must not be blank")
+    if len(normalized) > 100:
+        raise HTTPException(
+            status_code=400, detail=f"{field_name} must be at most 100 characters"
+        )
+    return normalized
+
+
+def normalize_custom_instructions(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if len(normalized) > 4000:
+        raise HTTPException(
+            status_code=400, detail=f"{field_name} must be at most 4000 characters"
+        )
+    return normalized
+
+
+def quiz_generation_settings(row: sqlite3.Row) -> dict:
+    return {
+        "education_level": row["education_level"],
+        "difficulty": row["difficulty"],
+        "language": row["language"],
+        "custom_instructions": row["custom_instructions"],
+    }
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -303,9 +366,15 @@ async def configure(
     lab_name: str = Form(...),
     quiz_enabled: bool = Form(True),
     ta_enabled: bool = Form(True),
+    ta_language: str = Form("English"),
+    ta_custom_instructions: str = Form(""),
     chat_logging_enabled: bool = Form(False),
     files: list[UploadFile] = File(default=[]),
 ):
+    ta_language = normalize_language(ta_language, "ta_language")
+    ta_custom_instructions = normalize_custom_instructions(
+        ta_custom_instructions, "ta_custom_instructions"
+    )
     parts: list[str] = []
     for f in files:
         raw = await f.read()
@@ -325,8 +394,9 @@ async def configure(
         conn.execute(
             "INSERT INTO labs "
             "(token, lab_name, lab_content, api_key, model, created_at, "
-            "chat_logging_enabled, quiz_enabled, ta_enabled) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
+            "ta_custom_instructions) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
                 lab_name,
@@ -337,6 +407,8 @@ async def configure(
                 1 if chat_logging_enabled else 0,
                 1 if quiz_enabled else 0,
                 1 if ta_enabled else 0,
+                ta_language,
+                ta_custom_instructions,
             ),
         )
         conn.commit()
@@ -422,7 +494,8 @@ async def get_instructor_lab(token: str):
     with get_db() as conn:
         lab = conn.execute(
             """
-            SELECT lab_name, model, chat_logging_enabled, quiz_enabled, ta_enabled
+            SELECT lab_name, model, chat_logging_enabled, quiz_enabled, ta_enabled,
+                   ta_language, ta_custom_instructions
             FROM labs
             WHERE token = ?
             """,
@@ -432,7 +505,8 @@ async def get_instructor_lab(token: str):
             raise HTTPException(status_code=404, detail="Lab not found")
         quiz = conn.execute(
             """
-            SELECT id, status, n_questions, created_at
+            SELECT id, status, n_questions, created_at, education_level,
+                   difficulty, language, custom_instructions
             FROM quizzes
             WHERE token = ? AND status = 'published'
             ORDER BY created_at DESC, id DESC
@@ -448,6 +522,7 @@ async def get_instructor_lab(token: str):
             "status": quiz["status"],
             "n_questions": quiz["n_questions"],
             "created_at": quiz["created_at"],
+            "generation_settings": quiz_generation_settings(quiz),
         }
 
     return {
@@ -459,6 +534,8 @@ async def get_instructor_lab(token: str):
         "chat_logging_enabled": bool(lab["chat_logging_enabled"]),
         "quiz_enabled": bool(lab["quiz_enabled"]),
         "ta_enabled": bool(lab["ta_enabled"]),
+        "ta_language": lab["ta_language"],
+        "ta_custom_instructions": lab["ta_custom_instructions"],
         "active_quiz": active_quiz,
     }
 
@@ -486,7 +563,8 @@ async def chat(token: str, req: ChatRequest):
     with get_db() as conn:
         row = conn.execute(
             """
-            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled, ta_enabled
+            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled,
+                   ta_enabled, ta_language, ta_custom_instructions
             FROM labs
             WHERE token = ?
             """,
@@ -497,7 +575,12 @@ async def chat(token: str, req: ChatRequest):
     if not row["ta_enabled"]:
         raise _disabled_error("Socratic TA")
 
-    system_prompt = build_system_prompt(row["lab_name"], row["lab_content"])
+    system_prompt = build_system_prompt(
+        row["lab_name"],
+        row["lab_content"],
+        row["ta_language"],
+        row["ta_custom_instructions"],
+    )
     full_history = req.history + [{"role": "user", "text": req.message}]
 
     passed = await screen_message(row["api_key"], token, req.message)
@@ -594,6 +677,19 @@ def _get_quiz_questions(conn: sqlite3.Connection, quiz_id: int, include_answer_d
 # ── Quiz routes ───────────────────────────────────────────────────────────────
 @app.post("/quiz/generate")
 async def quiz_generate(req: GenerateQuizRequest):
+    if req.education_level not in {"high_school", "university"}:
+        raise HTTPException(
+            status_code=400,
+            detail="education_level must be high_school or university",
+        )
+    if req.difficulty not in {"easy", "medium", "hard"}:
+        raise HTTPException(
+            status_code=400, detail="difficulty must be easy, medium, or hard"
+        )
+    language = normalize_language(req.language, "language")
+    custom_instructions = normalize_custom_instructions(
+        req.custom_instructions, "custom_instructions"
+    )
     with get_db() as conn:
         require_quiz_enabled_for_token(conn, req.token)
         row = conn.execute(
@@ -605,7 +701,15 @@ async def quiz_generate(req: GenerateQuizRequest):
         raise HTTPException(status_code=400, detail="n_questions must be between 3 and 10")
 
     try:
-        questions = await generate_quiz(row["api_key"], row["lab_content"], req.n_questions)
+        questions = await generate_quiz(
+            row["api_key"],
+            row["lab_content"],
+            req.n_questions,
+            req.education_level,
+            req.difficulty,
+            language,
+            custom_instructions,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=f"Quiz generation failed — please try again. ({exc})") from exc
     except Exception as exc:
@@ -621,8 +725,19 @@ async def quiz_generate(req: GenerateQuizRequest):
 
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO quizzes (token, status, n_questions, created_at) VALUES (?, 'draft', ?, ?)",
-            (req.token, req.n_questions, datetime.now(UTC).isoformat()),
+            "INSERT INTO quizzes "
+            "(token, status, n_questions, created_at, education_level, difficulty, "
+            "language, custom_instructions) "
+            "VALUES (?, 'draft', ?, ?, ?, ?, ?, ?)",
+            (
+                req.token,
+                req.n_questions,
+                datetime.now(UTC).isoformat(),
+                req.education_level,
+                req.difficulty,
+                language,
+                custom_instructions,
+            ),
         )
         quiz_id = cur.lastrowid
         for i, q in enumerate(questions):
@@ -642,7 +757,17 @@ async def quiz_generate(req: GenerateQuizRequest):
     with get_db() as conn:
         quiz_questions = _get_quiz_questions(conn, quiz_id, include_answer_data=True)
 
-    return {"quiz_id": quiz_id, "status": "draft", "questions": quiz_questions}
+    return {
+        "quiz_id": quiz_id,
+        "status": "draft",
+        "generation_settings": {
+            "education_level": req.education_level,
+            "difficulty": req.difficulty,
+            "language": language,
+            "custom_instructions": custom_instructions,
+        },
+        "questions": quiz_questions,
+    }
 
 
 @app.get("/quiz/active/{token}")
@@ -666,7 +791,13 @@ async def quiz_get(quiz_id: int):
         row = require_quiz_enabled_for_quiz(conn, quiz_id)
     with get_db() as conn:
         questions = _get_quiz_questions(conn, quiz_id, include_answer_data=True)
-    return {"quiz_id": quiz_id, "token": row["token"], "status": row["status"], "questions": questions}
+    return {
+        "quiz_id": quiz_id,
+        "token": row["token"],
+        "status": row["status"],
+        "generation_settings": quiz_generation_settings(row),
+        "questions": questions,
+    }
 
 
 @app.put("/quiz/{quiz_id}")

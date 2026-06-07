@@ -11,11 +11,27 @@ import llm_config
 from prompt_loader import PROMPTS
 
 
-async def generate_quiz(api_key: str, document_text: str, n_questions: int) -> list[dict]:
+async def generate_quiz(
+    api_key: str,
+    document_text: str,
+    n_questions: int,
+    education_level: str,
+    difficulty: str,
+    language: str,
+    custom_instructions: str,
+) -> list[dict]:
     client = genai.Client(api_key=api_key)
     prompt = PROMPTS["quiz_generation"].render(
         n_questions=n_questions,
         document_text=document_text,
+        education_level=education_level,
+        difficulty=difficulty,
+        quiz_language=language,
+        quiz_custom_instructions=(
+            custom_instructions
+            if custom_instructions
+            else "(No additional instructor instructions.)"
+        ),
     )
 
     response = await client.aio.models.generate_content(

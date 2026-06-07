@@ -16,12 +16,18 @@ def write_prompt(path: Path, name: str, text: str) -> None:
 
 
 def test_load_prompt_templates_and_render_without_touching_json_braces(tmp_path):
-    write_prompt(tmp_path, "ta_system.md", "TA {{lab_name}}\n{{lab_content}}")
+    write_prompt(
+        tmp_path,
+        "ta_system.md",
+        "TA {{lab_name}}\n{{lab_content}}\n{{ta_language}}\n{{ta_custom_instructions}}",
+    )
     write_prompt(tmp_path, "screening.md", "Message: {{message}}")
     write_prompt(
         tmp_path,
         "quiz_generation.md",
-        'Generate {{n_questions}}\n{{document_text}}\n{"choices": {"A": "x"}}',
+        "Generate {{n_questions}}\n{{document_text}}\n{{education_level}}\n"
+        "{{difficulty}}\n{{quiz_language}}\n{{quiz_custom_instructions}}\n"
+        '{"choices": {"A": "x"}}',
     )
 
     prompts = load_prompt_templates(tmp_path)
@@ -29,6 +35,10 @@ def test_load_prompt_templates_and_render_without_touching_json_braces(tmp_path)
     rendered = prompts["quiz_generation"].render(
         n_questions=3,
         document_text="Lab text",
+        education_level="University",
+        difficulty="Hard",
+        quiz_language="Spanish",
+        quiz_custom_instructions="Focus on safety.",
     )
     assert "Generate 3" in rendered
     assert "Lab text" in rendered

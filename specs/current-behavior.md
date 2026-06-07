@@ -47,6 +47,11 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - The instructor setup form and dashboard show separate Quiz Generation and
   Socratic TA feature groups. Both features default to enabled, and instructors
   can edit both flags later from the dashboard.
+- Lab setup also captures immutable Socratic TA language and optional custom
+  instructions. The dashboard returns and displays these settings read-only.
+- The browser remembers the last TA and quiz configuration in `localStorage`.
+  Language defaults to `English` on first use; quiz level and difficulty do not
+  have defaults.
 
 ## Student Chat
 
@@ -100,6 +105,9 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   `chat_logging_enabled INTEGER NOT NULL DEFAULT 0`.
 - Existing SQLite databases with a `labs` table missing `quiz_enabled` or
   `ta_enabled` are upgraded in place with both feature flags enabled.
+- Existing labs are upgraded with `ta_language='English'` and empty TA custom
+  instructions. Existing quizzes are upgraded with nullable education level,
+  difficulty, and language plus empty custom instructions.
 - `chat_logs` stores one row per logged exchange with `token`, `session_id`,
   `exchange_index`, `question_at`, `question`, `response`, and `blocked`.
 - Chat exchange ordering is maintained per `(token, session_id)` through
@@ -135,11 +143,19 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 ## Prelab Quiz
 
 - `POST /quiz/generate` creates a draft quiz for a known lab with document text.
+- Every generation requires `high_school` or `university`, `easy`, `medium`, or
+  `hard`, and a nonblank language. Optional custom instructions are stored with
+  that quiz generation.
+- Quiz generation settings are immutable snapshots returned with generated and
+  instructor-detail responses. Legacy quiz metadata remains null.
 - Quiz operations return `403` when quiz generation is disabled for the owning
   lab. Existing quiz data is preserved while disabled.
 - The requested question count must be between 3 and 10.
 - Generated quiz questions are stored with choices A-D, a correct answer, an
   explanation, and initial anonymous stats.
+- Quiz and TA prompts independently receive their selected languages and custom
+  instructions. Protected prompt rules explicitly prevent custom instructions
+  from overriding output, consistency, Socratic, safety, or disclosure rules.
 - Quiz generation asks Gemini to verify each correct-answer label against its
   answer text and explanation before returning JSON.
 - `GET /quiz/{quiz_id}` returns draft or published quiz details including answer

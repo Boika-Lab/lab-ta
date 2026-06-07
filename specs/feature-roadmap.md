@@ -13,6 +13,9 @@ future feature areas.
 - Instructor dashboard hydration through `GET /api/instructor/lab/{token}`.
 - Per-lab Quiz Generation and Socratic TA availability controls, editable at
   setup time and later from the instructor dashboard.
+- Immutable per-lab Socratic TA language and custom instructions, plus
+  immutable per-generation quiz level, difficulty, language, and custom
+  instructions.
 - Saved-labs index at `/instructor/labs` with lookup data from
   `GET /api/instructor/labs`.
 - QR code display and copy/open-link controls for student access.
@@ -67,6 +70,9 @@ future feature areas.
 - Completed Quiz Answer Consistency spec, including prompt instructions that
   ask Gemini to verify correct-answer labels against answer text and
   explanations before returning JSON.
+- Completed Per-Generation Quiz and TA Configuration spec, including schema
+  upgrades, protected prompt interpolation, dashboard display, validation, and
+  browser preference restoration.
 - Reusable spec template for future changes.
 - Pytest route-level contract tests.
 - Test database isolation through `LAB_TA_DB_PATH`.

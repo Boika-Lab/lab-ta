@@ -31,6 +31,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   instructor dashboard URLs and hydration behavior.
 - `persistent-chat-logs.md` documents opt-in anonymous chat log persistence and
   export behavior.
+- `per-generation-quiz-and-ta-configuration.md` documents immutable TA
+  configuration and per-generation quiz settings.
 - `quiz-answer-consistency.md` documents answer-label consistency prompt
   requirements for generated prelab quizzes.
 - `quiz-question-export.md` documents copy/pasteable instructor export behavior

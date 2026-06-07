@@ -29,6 +29,8 @@ not a target architecture.
   checkbox, durable dashboard hydration for `/instructor/{token}`, student
   link, QR code, chat log export, saved-labs link, grouped feature availability
   controls, quiz generation, quiz publishing, and stats UI.
+- The instructor template uses `localStorage` for the last TA language/custom
+  instructions and quiz level/difficulty/language/custom instructions.
 - `templates/instructor_labs.html`: saved-labs index that fetches
   `/api/instructor/labs` and links to instructor dashboard and student URLs.
 - `templates/student.html`: student chat UI, voice input, text-to-speech,
@@ -62,6 +64,8 @@ not a target architecture.
 
 - Pytest contract tests live in `tests/`.
 - Tests mock Gemini-facing functions and use isolated SQLite databases.
+- Contract tests cover in-place schema upgrades and immutable generation
+  metadata in addition to route and prompt behavior.
 - Static template tests verify important UI wiring such as chat logging controls
   instructor dashboard hydration, saved-labs links, feature availability
   controls, and browser-local session IDs.

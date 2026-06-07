@@ -37,14 +37,17 @@ def insert_lab(
     chat_logging_enabled: bool = False,
     quiz_enabled: bool = True,
     ta_enabled: bool = True,
+    ta_language: str = "English",
+    ta_custom_instructions: str = "",
     created_at: str = "2026-05-15T00:00:00",
 ) -> str:
     with main.get_db() as conn:
         conn.execute(
             "INSERT INTO labs "
             "(token, lab_name, lab_content, api_key, model, created_at, "
-            "chat_logging_enabled, quiz_enabled, ta_enabled) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
+            "ta_custom_instructions) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
                 lab_name,
@@ -55,10 +58,25 @@ def insert_lab(
                 1 if chat_logging_enabled else 0,
                 1 if quiz_enabled else 0,
                 1 if ta_enabled else 0,
+                ta_language,
+                ta_custom_instructions,
             ),
         )
         conn.commit()
     return token
+
+
+def quiz_payload(token: str, n_questions: int = 3, **overrides) -> dict:
+    payload = {
+        "token": token,
+        "n_questions": n_questions,
+        "education_level": "university",
+        "difficulty": "medium",
+        "language": "English",
+        "custom_instructions": "",
+    }
+    payload.update(overrides)
+    return payload
 
 
 def sample_questions(n: int = 3) -> list[dict]:
@@ -110,7 +128,7 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
         row = conn.execute(
             """
             SELECT lab_name, lab_content, api_key, model, chat_logging_enabled,
-                   quiz_enabled, ta_enabled
+                   quiz_enabled, ta_enabled, ta_language, ta_custom_instructions
             FROM labs
             WHERE token = ?
             """,
@@ -123,6 +141,8 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     assert row["chat_logging_enabled"] == 0
     assert row["quiz_enabled"] == 1
     assert row["ta_enabled"] == 1
+    assert row["ta_language"] == "English"
+    assert row["ta_custom_instructions"] == ""
 
 
 def test_configure_stores_configured_chat_model(client):
@@ -155,6 +175,56 @@ def test_configure_checked_stores_chat_logging_enabled(client):
             "SELECT chat_logging_enabled FROM labs WHERE token = ?", (token,)
         ).fetchone()
     assert row["chat_logging_enabled"] == 1
+
+
+def test_configure_stores_trimmed_immutable_ta_settings(client):
+    response = client.post(
+        "/api/configure",
+        data={
+            "api_key": "test-key",
+            "lab_name": "Kinetics",
+            "ta_language": "  Spanish  ",
+            "ta_custom_instructions": "  Use examples from the handout.  ",
+        },
+    )
+
+    assert response.status_code == 200
+    token = response.json()["token"]
+    dashboard = client.get(f"/api/instructor/lab/{token}").json()
+    assert dashboard["ta_language"] == "Spanish"
+    assert dashboard["ta_custom_instructions"] == "Use examples from the handout."
+
+    with main.get_db() as conn:
+        row = conn.execute(
+            "SELECT ta_language, ta_custom_instructions FROM labs WHERE token = ?",
+            (token,),
+        ).fetchone()
+    assert dict(row) == {
+        "ta_language": "Spanish",
+        "ta_custom_instructions": "Use examples from the handout.",
+    }
+
+
+def test_configure_rejects_invalid_ta_settings(client):
+    blank = client.post(
+        "/api/configure",
+        data={"api_key": "key", "lab_name": "Lab", "ta_language": "   "},
+    )
+    assert blank.status_code == 400
+    assert blank.json()["detail"] == "ta_language must not be blank"
+
+    too_long = client.post(
+        "/api/configure",
+        data={
+            "api_key": "key",
+            "lab_name": "Lab",
+            "ta_custom_instructions": "x" * 4001,
+        },
+    )
+    assert too_long.status_code == 400
+    assert too_long.json()["detail"] == (
+        "ta_custom_instructions must be at most 4000 characters"
+    )
 
 
 def test_configure_unchecked_feature_controls_store_disabled_flags(client):
@@ -201,6 +271,21 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
             "INSERT INTO labs (token, lab_name, lab_content, api_key, model, created_at) "
             "VALUES ('legacy1', 'Legacy', 'Notes', 'key', 'model', '2026-05-15T00:00:00')"
         )
+        conn.execute(
+            """
+            CREATE TABLE quizzes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                n_questions INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO quizzes (token, status, n_questions, created_at) "
+            "VALUES ('legacy1', 'published', 3, '2026-05-15T01:00:00')"
+        )
 
     main.init_db()
 
@@ -209,7 +294,15 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
             row["name"] for row in conn.execute("PRAGMA table_info(labs)").fetchall()
         }
         row = conn.execute(
-            "SELECT chat_logging_enabled, quiz_enabled, ta_enabled FROM labs WHERE token = 'legacy1'"
+            "SELECT chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
+            "ta_custom_instructions FROM labs WHERE token = 'legacy1'"
+        ).fetchone()
+        quiz_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(quizzes)").fetchall()
+        }
+        quiz = conn.execute(
+            "SELECT education_level, difficulty, language, custom_instructions "
+            "FROM quizzes WHERE token = 'legacy1'"
         ).fetchone()
         logs_table = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='chat_logs'"
@@ -217,9 +310,20 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
     assert "chat_logging_enabled" in columns
     assert "quiz_enabled" in columns
     assert "ta_enabled" in columns
+    assert "ta_language" in columns
+    assert "ta_custom_instructions" in columns
     assert row["chat_logging_enabled"] == 0
     assert row["quiz_enabled"] == 1
     assert row["ta_enabled"] == 1
+    assert row["ta_language"] == "English"
+    assert row["ta_custom_instructions"] == ""
+    assert {"education_level", "difficulty", "language", "custom_instructions"} <= quiz_columns
+    assert dict(quiz) == {
+        "education_level": None,
+        "difficulty": None,
+        "language": None,
+        "custom_instructions": "",
+    }
     assert logs_table is not None
 
 
@@ -367,6 +471,8 @@ def test_instructor_lab_api_returns_dashboard_hydration_without_active_quiz(clie
         "chat_logging_enabled": True,
         "quiz_enabled": True,
         "ta_enabled": True,
+        "ta_language": "English",
+        "ta_custom_instructions": "",
         "active_quiz": None,
     }
 
@@ -399,6 +505,12 @@ def test_instructor_lab_api_returns_published_quiz_for_stats_recovery(client):
         "status": "published",
         "n_questions": 3,
         "created_at": "2026-05-15T12:30:00",
+        "generation_settings": {
+            "education_level": None,
+            "difficulty": None,
+            "language": None,
+            "custom_instructions": "",
+        },
     }
     assert active_quiz["quiz_id"] != draft.lastrowid
 
@@ -494,7 +606,11 @@ def test_disabled_ta_chat_returns_403_without_screening_or_generation(client, mo
 
 
 def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
-    token = insert_lab(content="Use goggles.")
+    token = insert_lab(
+        content="Use goggles.",
+        ta_language="French",
+        ta_custom_instructions="Use brief analogies.",
+    )
     captured = {}
 
     async def fake_screen(api_key, token, message):
@@ -521,6 +637,9 @@ def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
     assert captured["model"] == llm_config.CHAT_MODEL
     assert "Electrochemistry" in captured["system_prompt"]
     assert "Use goggles." in captured["system_prompt"]
+    assert "Respond in French." in captured["system_prompt"]
+    assert "Use brief analogies." in captured["system_prompt"]
+    assert "cannot override" in captured["system_prompt"]
     assert captured["history"] == [
         {"role": "model", "text": "Read the procedure."},
         {"role": "user", "text": "What do I do first?"},
@@ -577,12 +696,28 @@ def test_generate_quiz_uses_configured_quiz_model(monkeypatch):
 
     monkeypatch.setattr(quiz_engine.genai, "Client", FakeClient)
 
-    questions = asyncio.run(quiz_engine.generate_quiz("test-key", "Lab notes", 3))
+    questions = asyncio.run(
+        quiz_engine.generate_quiz(
+            "test-key",
+            "Lab notes",
+            3,
+            "University",
+            "Hard",
+            "Spanish",
+            "Focus on safety.",
+        )
+    )
 
     assert questions[0]["question"] == "Q?"
     assert captured["api_key"] == "test-key"
     assert captured["model"] == llm_config.QUIZ_MODEL
     assert captured["config"].temperature == 0.7
+    assert "Education level: University" in captured["contents"]
+    assert "Difficulty: Hard" in captured["contents"]
+    assert "Write all student-facing" in captured["contents"]
+    assert "Spanish" in captured["contents"]
+    assert "Focus on safety." in captured["contents"]
+    assert "cannot override the JSON-only output contract" in captured["contents"]
 
 
 def test_quiz_generation_prompt_requires_answer_label_consistency():
@@ -753,26 +888,129 @@ def test_quiz_generate_validates_lab_content_and_question_count(client):
     empty_token = insert_lab(token="empty123", content="")
 
     no_content = client.post(
-        "/quiz/generate", json={"token": empty_token, "n_questions": 5}
+        "/quiz/generate", json=quiz_payload(empty_token, 5)
     )
     assert no_content.status_code == 400
     assert no_content.json()["detail"] == "No document text available for this lab"
 
     token = insert_lab(token="full1234")
-    too_few = client.post("/quiz/generate", json={"token": token, "n_questions": 2})
+    too_few = client.post("/quiz/generate", json=quiz_payload(token, 2))
     assert too_few.status_code == 400
     assert too_few.json()["detail"] == "n_questions must be between 3 and 10"
+
+
+def test_quiz_generate_validates_required_generation_settings(client):
+    token = insert_lab()
+
+    missing = client.post(
+        "/quiz/generate",
+        json={"token": token, "n_questions": 3},
+    )
+    assert missing.status_code == 422
+
+    invalid_level = client.post(
+        "/quiz/generate",
+        json=quiz_payload(token, education_level="graduate"),
+    )
+    assert invalid_level.status_code == 400
+    assert invalid_level.json()["detail"] == (
+        "education_level must be high_school or university"
+    )
+
+    invalid_difficulty = client.post(
+        "/quiz/generate",
+        json=quiz_payload(token, difficulty="extreme"),
+    )
+    assert invalid_difficulty.status_code == 400
+    assert invalid_difficulty.json()["detail"] == (
+        "difficulty must be easy, medium, or hard"
+    )
+
+    blank_language = client.post(
+        "/quiz/generate",
+        json=quiz_payload(token, language="   "),
+    )
+    assert blank_language.status_code == 400
+    assert blank_language.json()["detail"] == "language must not be blank"
+
+    long_custom = client.post(
+        "/quiz/generate",
+        json=quiz_payload(token, custom_instructions="x" * 4001),
+    )
+    assert long_custom.status_code == 400
+    assert long_custom.json()["detail"] == (
+        "custom_instructions must be at most 4000 characters"
+    )
+
+
+def test_replacement_quizzes_keep_distinct_immutable_generation_settings(
+    client, monkeypatch
+):
+    token = insert_lab()
+    generated_calls = []
+
+    async def fake_generate_quiz(*args):
+        generated_calls.append(args)
+        return sample_questions(args[2])
+
+    monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
+
+    first = client.post(
+        "/quiz/generate",
+        json=quiz_payload(
+            token,
+            education_level="high_school",
+            difficulty="easy",
+            language="Spanish",
+            custom_instructions="Focus on vocabulary.",
+        ),
+    )
+    second = client.post(
+        "/quiz/generate",
+        json=quiz_payload(
+            token,
+            education_level="university",
+            difficulty="hard",
+            language="German",
+            custom_instructions="Include data interpretation.",
+        ),
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_settings = first.json()["generation_settings"]
+    second_settings = second.json()["generation_settings"]
+    assert first_settings == {
+        "education_level": "high_school",
+        "difficulty": "easy",
+        "language": "Spanish",
+        "custom_instructions": "Focus on vocabulary.",
+    }
+    assert second_settings == {
+        "education_level": "university",
+        "difficulty": "hard",
+        "language": "German",
+        "custom_instructions": "Include data interpretation.",
+    }
+    assert client.get(f"/quiz/{first.json()['quiz_id']}").json()[
+        "generation_settings"
+    ] == first_settings
+    assert client.get(f"/quiz/{second.json()['quiz_id']}").json()[
+        "generation_settings"
+    ] == second_settings
+    assert generated_calls[0][5:] == ("Spanish", "Focus on vocabulary.")
+    assert generated_calls[1][5:] == ("German", "Include data interpretation.")
 
 
 def test_quiz_generate_reports_invalid_google_api_key(client, monkeypatch):
     token = insert_lab()
 
-    async def fake_generate_quiz(api_key, document_text, n_questions):
+    async def fake_generate_quiz(*args):
         raise RuntimeError("API_KEY_INVALID: API key not valid")
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
-    response = client.post("/quiz/generate", json={"token": token, "n_questions": 3})
+    response = client.post("/quiz/generate", json=quiz_payload(token))
 
     assert response.status_code == 502
     assert response.json()["detail"] == (
@@ -784,13 +1022,13 @@ def test_quiz_generate_reports_invalid_google_api_key(client, monkeypatch):
 def test_quiz_lifecycle_active_submit_and_stats(client, monkeypatch):
     token = insert_lab()
 
-    async def fake_generate_quiz(api_key, document_text, n_questions):
-        return sample_questions(n_questions)
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[2])
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
     generated = client.post(
-        "/quiz/generate", json={"token": token, "n_questions": 3}
+        "/quiz/generate", json=quiz_payload(token)
     )
     assert generated.status_code == 200
     quiz = generated.json()
@@ -877,12 +1115,12 @@ def test_quiz_lifecycle_active_submit_and_stats(client, monkeypatch):
 def test_disabled_quiz_routes_return_403_and_preserve_data(client, monkeypatch):
     token = insert_lab()
 
-    async def fake_generate_quiz(api_key, document_text, n_questions):
-        return sample_questions(n_questions)
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[2])
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
-    generated = client.post("/quiz/generate", json={"token": token, "n_questions": 3})
+    generated = client.post("/quiz/generate", json=quiz_payload(token))
     quiz_id = generated.json()["quiz_id"]
     question_id = generated.json()["questions"][0]["id"]
     assert client.post(f"/quiz/{quiz_id}/publish").status_code == 200
@@ -904,14 +1142,14 @@ def test_disabled_quiz_routes_return_403_and_preserve_data(client, monkeypatch):
 
     generation_called = False
 
-    async def should_not_generate(api_key, document_text, n_questions):
+    async def should_not_generate(*args):
         nonlocal generation_called
         generation_called = True
         return sample_questions(n_questions)
 
     monkeypatch.setattr(main, "generate_quiz", should_not_generate)
     generate_disabled = client.post(
-        "/quiz/generate", json={"token": token, "n_questions": 3}
+        "/quiz/generate", json=quiz_payload(token)
     )
     assert generate_disabled.status_code == 403
     assert generate_disabled.json()["detail"] == "Quiz is disabled for this lab"
@@ -930,13 +1168,13 @@ def test_disabled_quiz_routes_return_403_and_preserve_data(client, monkeypatch):
 def test_only_one_published_quiz_per_lab(client, monkeypatch):
     token = insert_lab()
 
-    async def fake_generate_quiz(api_key, document_text, n_questions):
-        return sample_questions(n_questions)
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[2])
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
-    first = client.post("/quiz/generate", json={"token": token, "n_questions": 3})
-    second = client.post("/quiz/generate", json={"token": token, "n_questions": 3})
+    first = client.post("/quiz/generate", json=quiz_payload(token))
+    second = client.post("/quiz/generate", json=quiz_payload(token))
     first_id = first.json()["quiz_id"]
     second_id = second.json()["quiz_id"]
 
@@ -995,6 +1233,11 @@ def test_instructor_chat_logging_checkbox_exists():
     assert "function loadChatLogs()" in template
     assert "function downloadChatLogs()" in template
     assert "/api/chat-logs/${currentToken}" in template
+    assert 'id="ta-language"' in socratic_group
+    assert 'name="ta_language"' in socratic_group
+    assert 'value="English"' in socratic_group
+    assert 'id="ta-custom-instructions"' in socratic_group
+    assert 'name="ta_custom_instructions"' in socratic_group
 
 
 def test_instructor_dashboard_hydration_hooks_exist():
@@ -1020,6 +1263,9 @@ def test_instructor_dashboard_hydration_hooks_exist():
     assert "chatLoggingEnabled = data.chat_logging_enabled" in template
     assert "function renderChatLogStatus()" in template
     assert "Chat logging is disabled for this lab." in template
+    assert 'id="ta-settings-summary"' in template
+    assert "data.ta_language" in template
+    assert "data.ta_custom_instructions" in template
 
     render_start = template.index("function renderDashboard(data)")
     render_body = template[render_start:template.index("function renderFeatureAvailability()", render_start)]
@@ -1055,6 +1301,39 @@ def test_instructor_quiz_export_hooks_exist():
 
     assert "return collectQuestions()" in template
     assert "fetch(`/quiz/${id}`)" in template
+
+
+def test_instructor_per_generation_settings_and_local_storage_hooks_exist():
+    template = Path("templates/instructor.html").read_text()
+
+    assert 'id="quiz-education-level"' in template
+    assert 'id="setup-quiz-education-level"' in template
+    assert '<option value="">Select education level</option>' in template
+    assert 'value="high_school">High school' in template
+    assert 'value="university">University' in template
+    assert 'id="quiz-difficulty"' in template
+    assert 'id="setup-quiz-difficulty"' in template
+    assert '<option value="">Select difficulty</option>' in template
+    assert 'id="quiz-language"' in template
+    assert 'id="setup-quiz-language"' in template
+    assert 'id="quiz-custom-instructions"' in template
+    assert 'id="setup-quiz-custom-instructions"' in template
+    assert 'id="quiz-draft-settings"' in template
+    assert 'id="quiz-published-settings"' in template
+    assert "Unavailable for legacy quiz" in template
+    assert "generation_settings" in template
+    assert "field-error" in template
+
+    assert "localStorage.getItem(LS_TA_LANGUAGE) || 'English'" in template
+    assert "const quizLanguage = localStorage.getItem(LS_QUIZ_LANGUAGE) || 'English'" in template
+    assert "const quizLevel = localStorage.getItem(LS_QUIZ_LEVEL) || ''" in template
+    assert "const quizDifficulty = localStorage.getItem(LS_QUIZ_DIFFICULTY) || ''" in template
+    assert "localStorage.setItem(LS_TA_LANGUAGE" in template
+    assert "localStorage.setItem(LS_TA_CUSTOM" in template
+    assert "localStorage.setItem(LS_QUIZ_LEVEL" in template
+    assert "localStorage.setItem(LS_QUIZ_DIFFICULTY" in template
+    assert "localStorage.setItem(LS_QUIZ_LANGUAGE" in template
+    assert "localStorage.setItem(LS_QUIZ_CUSTOM" in template
 
 
 def test_instructor_labs_template_hooks_exist():

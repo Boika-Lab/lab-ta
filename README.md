@@ -236,6 +236,8 @@ instructor dashboard and student URL.
 | **Lab Documents** | Upload one or more files in **PDF, PPTX, or DOCX** format. You can select multiple files at once. The TA will base all its guidance exclusively on the content of these files. |
 | **Quiz Generation** | Enabled by default. Uncheck this if students should not see or take a prelab quiz for this lab. |
 | **Socratic TA** | Enabled by default. Uncheck this if students should not chat with the TA for this lab. |
+| **TA Language** | Language used by the Socratic TA. Defaults to `English` and cannot be changed after lab creation. |
+| **TA Custom Instructions** | Optional lab-specific guidance. Protected Socratic, safety, and prompt-disclosure rules still take precedence. |
 | **Save anonymous chat logs** | Optional Socratic TA setting. When checked, completed student chat exchanges are stored locally and can be refreshed or downloaded as JSON from the instructor page. |
 
 ### Step 3 — Generate the Student Link
@@ -254,6 +256,18 @@ new instructor dashboard. There you will see:
 - Optional **Chat Logs** controls if anonymous logging was enabled for this lab
 
 You can refresh or reopen the instructor dashboard URL later to recover the student link, QR code, feature availability controls, chat log controls, published quiz status, and quiz stats access. Draft quiz recovery is not supported in the first dashboard version.
+
+### Generate a Prelab Quiz
+
+Each new or replacement quiz requires a question count, education level,
+difficulty, and quiz language. Optional quiz custom instructions apply only to
+that generation. These settings are stored as an immutable snapshot and shown
+above the draft editor and published state; the generated questions and answers
+remain editable before publishing.
+
+The browser remembers the last quiz and TA settings. On first use, both language
+fields default to `English`, while quiz education level and difficulty remain
+unselected.
 
 ### Step 4 — Share with Students
 

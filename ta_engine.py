@@ -8,9 +8,24 @@ from google.genai import types
 from prompt_loader import PROMPTS
 
 
-def build_system_prompt(lab_name: str, lab_content: str) -> str:
+def build_system_prompt(
+    lab_name: str,
+    lab_content: str,
+    ta_language: str,
+    ta_custom_instructions: str,
+) -> str:
     content = lab_content if lab_content.strip() else "(No documents uploaded.)"
-    return PROMPTS["ta_system"].render(lab_name=lab_name, lab_content=content)
+    custom_instructions = (
+        ta_custom_instructions
+        if ta_custom_instructions
+        else "(No additional instructor instructions.)"
+    )
+    return PROMPTS["ta_system"].render(
+        lab_name=lab_name,
+        lab_content=content,
+        ta_language=ta_language,
+        ta_custom_instructions=custom_instructions,
+    )
 
 
 async def get_ta_response(

@@ -55,7 +55,8 @@
 
     input[type="text"],
     input[type="password"],
-    select {
+    select,
+    textarea {
       width: 100%;
       padding: 0.65rem 0.85rem;
       border: 1.5px solid #d0d5dd;
@@ -376,6 +377,23 @@
       font-size: 0.86rem;
       line-height: 1.5;
     }
+    .settings-summary {
+      margin: 0 0 1rem;
+      padding: 0.85rem;
+      background: #f7f9fc;
+      border: 1px solid #e0e5ec;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    .settings-summary dl {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr);
+      gap: 0.35rem 0.75rem;
+    }
+    .settings-summary dt { font-weight: 700; color: #444; }
+    .settings-summary dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .field-error { border-color: #c0392b !important; background: #fff8f8 !important; }
     .quiz-export-panel {
       display: none;
       margin-top: 1rem;
@@ -481,7 +499,27 @@
               <span>Allows instructors to generate and publish prelab quizzes for this lab.</span>
             </label>
           </div>
-          <div class="feature-note">Quiz-specific options appear on the instructor dashboard after setup.</div>
+          <label for="setup-quiz-education-level">Education Level</label>
+          <select id="setup-quiz-education-level">
+            <option value="">Select when generating a quiz</option>
+            <option value="high_school">High school</option>
+            <option value="university">University</option>
+          </select>
+          <label for="setup-quiz-difficulty">Difficulty</label>
+          <select id="setup-quiz-difficulty">
+            <option value="">Select when generating a quiz</option>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+          <label for="setup-quiz-language">Quiz Language</label>
+          <input type="text" id="setup-quiz-language" maxlength="100" value="English" />
+          <label for="setup-quiz-custom-instructions">Optional Quiz Custom Instructions</label>
+          <textarea id="setup-quiz-custom-instructions" maxlength="4000" rows="4" placeholder="Additional guidance for quiz generation"></textarea>
+          <div class="feature-note">
+            These browser-saved values prefill the quiz generator after lab setup.
+            You can choose new settings for every generated or replacement quiz.
+          </div>
         </div>
         <div class="feature-group">
           <div class="feature-group-title">Socratic TA</div>
@@ -493,6 +531,10 @@
               <span>Allows students to chat with the lab teaching assistant.</span>
             </label>
           </div>
+          <label for="ta-language">TA Language</label>
+          <input type="text" id="ta-language" name="ta_language" maxlength="100" value="English" required />
+          <label for="ta-custom-instructions">Optional TA Custom Instructions</label>
+          <textarea id="ta-custom-instructions" name="ta_custom_instructions" maxlength="4000" rows="4" placeholder="Additional guidance for this lab's TA"></textarea>
           <div class="checkbox-row">
             <input type="checkbox" id="chat-logging-enabled" name="chat_logging_enabled" />
             <label for="chat-logging-enabled">
@@ -552,6 +594,7 @@
               </label>
             </div>
             <div class="feature-status" id="ta-feature-status"></div>
+            <div id="ta-settings-summary" class="settings-summary" style="margin-top:0.85rem;margin-bottom:0;"></div>
           </div>
         </div>
         <button class="btn-secondary" id="save-features-btn" style="margin-top:0.9rem;font-size:0.85rem;padding:0.45rem 0.9rem;min-width:0;" onclick="saveFeatureAvailability()">
@@ -585,6 +628,23 @@
             <input type="number" id="n-questions" min="3" max="10" value="5" style="width:80px;" />
             <span style="font-size:0.82rem;color:#888;">min 3 · max 10</span>
           </div>
+          <label for="quiz-education-level">Education Level</label>
+          <select id="quiz-education-level" required>
+            <option value="">Select education level</option>
+            <option value="high_school">High school</option>
+            <option value="university">University</option>
+          </select>
+          <label for="quiz-difficulty">Difficulty</label>
+          <select id="quiz-difficulty" required>
+            <option value="">Select difficulty</option>
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+          <label for="quiz-language">Quiz Language</label>
+          <input type="text" id="quiz-language" maxlength="100" value="English" required />
+          <label for="quiz-custom-instructions">Optional Quiz Custom Instructions</label>
+          <textarea id="quiz-custom-instructions" maxlength="4000" rows="4" placeholder="Additional guidance for this quiz generation"></textarea>
           <button class="btn-primary" id="gen-quiz-btn" style="margin-top:1rem;" onclick="generateQuiz()">
             Generate Prelab Quiz
           </button>
@@ -601,6 +661,7 @@
         </div>
 
         <div id="quiz-draft-editor" style="display:none;">
+          <div id="quiz-draft-settings" class="settings-summary"></div>
           <div id="questions-list"></div>
           <button class="btn-secondary" onclick="showQuizExport()" id="export-quiz-btn" style="margin-top:0.4rem;font-size:0.85rem;padding:0.45rem 0.9rem;min-width:0;">
             Export Quiz
@@ -611,6 +672,7 @@
         </div>
 
         <div id="quiz-published-state" style="display:none;">
+          <div id="quiz-published-settings" class="settings-summary"></div>
           <div style="display:flex;align-items:center;gap:0.5rem;color:#1a7a4a;font-weight:600;font-size:0.95rem;margin-bottom:0.85rem;">
             ✅ Prelab quiz is live! Students must pass it before chatting with the TA.
           </div>
@@ -666,6 +728,71 @@
     let taEnabled = true;
     let chatLoggingEnabled = false;
     let lastChatLogs = null;
+    let currentQuizSettings = null;
+
+    const LS_TA_LANGUAGE = 'labta_ta_language';
+    const LS_TA_CUSTOM = 'labta_ta_custom_instructions';
+    const LS_QUIZ_LEVEL = 'labta_quiz_education_level';
+    const LS_QUIZ_DIFFICULTY = 'labta_quiz_difficulty';
+    const LS_QUIZ_LANGUAGE = 'labta_quiz_language';
+    const LS_QUIZ_CUSTOM = 'labta_quiz_custom_instructions';
+
+    function restoreRememberedSettings() {
+      const quizLevel = localStorage.getItem(LS_QUIZ_LEVEL) || '';
+      const quizDifficulty = localStorage.getItem(LS_QUIZ_DIFFICULTY) || '';
+      const quizLanguage = localStorage.getItem(LS_QUIZ_LANGUAGE) || 'English';
+      const quizCustom = localStorage.getItem(LS_QUIZ_CUSTOM) || '';
+      document.getElementById('ta-language').value =
+        localStorage.getItem(LS_TA_LANGUAGE) || 'English';
+      document.getElementById('ta-custom-instructions').value =
+        localStorage.getItem(LS_TA_CUSTOM) || '';
+      document.getElementById('setup-quiz-education-level').value = quizLevel;
+      document.getElementById('setup-quiz-difficulty').value = quizDifficulty;
+      document.getElementById('setup-quiz-language').value = quizLanguage;
+      document.getElementById('setup-quiz-custom-instructions').value = quizCustom;
+      document.getElementById('quiz-education-level').value = quizLevel;
+      document.getElementById('quiz-difficulty').value = quizDifficulty;
+      document.getElementById('quiz-language').value = quizLanguage;
+      document.getElementById('quiz-custom-instructions').value = quizCustom;
+    }
+
+    function rememberTaSettings() {
+      localStorage.setItem(LS_TA_LANGUAGE, document.getElementById('ta-language').value.trim());
+      localStorage.setItem(LS_TA_CUSTOM, document.getElementById('ta-custom-instructions').value.trim());
+    }
+
+    function rememberQuizSettings(settings) {
+      localStorage.setItem(LS_QUIZ_LEVEL, settings.education_level);
+      localStorage.setItem(LS_QUIZ_DIFFICULTY, settings.difficulty);
+      localStorage.setItem(LS_QUIZ_LANGUAGE, settings.language);
+      localStorage.setItem(LS_QUIZ_CUSTOM, settings.custom_instructions);
+    }
+
+    function rememberSetupQuizSettings() {
+      rememberQuizSettings({
+        education_level: document.getElementById('setup-quiz-education-level').value,
+        difficulty: document.getElementById('setup-quiz-difficulty').value,
+        language: document.getElementById('setup-quiz-language').value.trim() || 'English',
+        custom_instructions: document.getElementById('setup-quiz-custom-instructions').value.trim(),
+      });
+    }
+
+    function displaySetting(value, formatter = value => value) {
+      return value === null || value === undefined
+        ? 'Unavailable for legacy quiz'
+        : formatter(value);
+    }
+
+    function renderSettingsSummary(elementId, settings) {
+      const labels = { high_school: 'High school', university: 'University' };
+      const difficulties = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+      document.getElementById(elementId).innerHTML = `<dl>
+        <dt>Education level</dt><dd>${escHtml(displaySetting(settings.education_level, value => labels[value] || value))}</dd>
+        <dt>Difficulty</dt><dd>${escHtml(displaySetting(settings.difficulty, value => difficulties[value] || value))}</dd>
+        <dt>Language</dt><dd>${escHtml(displaySetting(settings.language))}</dd>
+        <dt>Custom instructions</dt><dd>${escHtml(settings.custom_instructions || 'None')}</dd>
+      </dl>`;
+    }
 
     function renderDashboard(data) {
       studentUrl = window.location.origin + data.student_url;
@@ -675,6 +802,10 @@
       taEnabled = data.ta_enabled;
       chatLoggingEnabled = data.chat_logging_enabled;
       lastChatLogs = null;
+      document.getElementById('ta-settings-summary').innerHTML = `<dl>
+        <dt>Language</dt><dd>${escHtml(data.ta_language)}</dd>
+        <dt>Custom instructions</dt><dd>${escHtml(data.ta_custom_instructions || 'None')}</dd>
+      </dl>`;
 
       document.getElementById('setup-form').style.display = 'none';
       document.getElementById('loading').style.display = 'none';
@@ -702,11 +833,14 @@
       } else if (data.active_quiz) {
         currentQuizId = data.active_quiz.quiz_id;
         publishedQuizId = data.active_quiz.quiz_id;
+        currentQuizSettings = data.active_quiz.generation_settings;
+        renderSettingsSummary('quiz-published-settings', currentQuizSettings);
         document.getElementById('quiz-gen-controls').style.display = 'none';
         showPublishedState();
       } else {
         currentQuizId = null;
         publishedQuizId = null;
+        currentQuizSettings = null;
         document.getElementById('quiz-disabled-state').style.display = 'none';
         document.getElementById('quiz-published-state').style.display = 'none';
         document.getElementById('stats-btn').style.display = 'none';
@@ -819,6 +953,8 @@
       const data = new FormData(form);
       data.set('quiz_enabled', document.getElementById('quiz-enabled').checked ? 'true' : 'false');
       data.set('ta_enabled', document.getElementById('ta-enabled').checked ? 'true' : 'false');
+      rememberTaSettings();
+      rememberSetupQuizSettings();
 
       try {
         const res = await fetch('/api/configure', { method: 'POST', body: data });
@@ -926,10 +1062,29 @@
 
     async function generateQuiz() {
       const n = parseInt(document.getElementById('n-questions').value);
+      const levelEl = document.getElementById('quiz-education-level');
+      const difficultyEl = document.getElementById('quiz-difficulty');
+      const languageEl = document.getElementById('quiz-language');
+      [levelEl, difficultyEl, languageEl].forEach(el => el.classList.remove('field-error'));
       if (isNaN(n) || n < 3 || n > 10) {
         showQuizError('Number of questions must be between 3 and 10.');
         return;
       }
+      const settings = {
+        education_level: levelEl.value,
+        difficulty: difficultyEl.value,
+        language: languageEl.value.trim(),
+        custom_instructions: document.getElementById('quiz-custom-instructions').value.trim(),
+      };
+      let invalid = false;
+      if (!settings.education_level) { levelEl.classList.add('field-error'); invalid = true; }
+      if (!settings.difficulty) { difficultyEl.classList.add('field-error'); invalid = true; }
+      if (!settings.language) { languageEl.classList.add('field-error'); invalid = true; }
+      if (invalid) {
+        showQuizError('Select an education level and difficulty, and enter a quiz language.');
+        return;
+      }
+      rememberQuizSettings(settings);
       document.getElementById('quiz-error').style.display = 'none';
       document.getElementById('quiz-gen-controls').style.display = 'none';
       document.getElementById('quiz-gen-loading').style.display = 'block';
@@ -941,7 +1096,7 @@
         const res = await fetch('/quiz/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: currentToken, n_questions: n }),
+          body: JSON.stringify({ token: currentToken, n_questions: n, ...settings }),
         });
         const raw = await res.text();
         let data = {};
@@ -953,6 +1108,8 @@
         if (!res.ok) throw new Error(data.detail || 'Server error');
 
         currentQuizId = data.quiz_id;
+        currentQuizSettings = data.generation_settings;
+        renderSettingsSummary('quiz-draft-settings', currentQuizSettings);
         renderDraftEditor(data.questions);
         document.getElementById('quiz-draft-editor').style.display = 'block';
       } catch (err) {
@@ -1157,6 +1314,9 @@
       document.getElementById('quiz-draft-editor').style.display = 'none';
       document.getElementById('quiz-published-state').style.display = 'block';
       document.getElementById('stats-btn').style.display = '';
+      if (currentQuizSettings) {
+        renderSettingsSummary('quiz-published-settings', currentQuizSettings);
+      }
       hideQuizExport();
     }
 
@@ -1198,6 +1358,7 @@
         if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Error'); }
         publishedQuizId = null;
         currentQuizId = null;
+        currentQuizSettings = null;
         document.getElementById('quiz-published-state').style.display = 'none';
         document.getElementById('stats-panel').style.display = 'none';
         document.getElementById('stats-btn').style.display = 'none';
@@ -1209,6 +1370,8 @@
         alert('Error: ' + err.message);
       }
     }
+
+    restoreRememberedSettings();
   </script>
 </body>
 </html>
