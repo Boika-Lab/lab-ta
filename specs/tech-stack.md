@@ -15,11 +15,12 @@ not a target architecture.
 
 - `main.py`: FastAPI app, route handlers, SQLite schema initialization, chat log
   persistence, and quiz persistence.
-- `llm_config.py`: server-controlled Gemini model role constants.
+- `llm_config.py`: default LiteLLM model role identifiers.
+- `llm_client.py`: provider-neutral asynchronous LiteLLM completion adapter.
 - `prompt_loader.py`: startup/import-time loading, validation, and rendering of
   Markdown prompt templates from `prompts/`.
-- `ta_engine.py`: Socratic system prompt rendering and Gemini chat calls.
-- `quiz_engine.py`: Gemini-powered multiple-choice prelab quiz generation.
+- `ta_engine.py`: Socratic prompt rendering and provider-neutral chat calls.
+- `quiz_engine.py`: provider-neutral multiple-choice prelab quiz generation.
 - `document_parser.py`: Text extraction from uploaded PDF, PPTX, and DOCX files.
 
 ## Frontend
@@ -41,9 +42,9 @@ not a target architecture.
 
 ## External Services
 
-- Google Gemini via the `google-genai` SDK for TA responses, message screening,
-  and quiz generation. TA responses and quiz generation currently use
-  `gemini-2.5-flash`; message screening uses `gemini-2.5-flash-lite`.
+- LiteLLM for TA responses, message screening, and quiz generation. Gemini is
+  the default provider; loopback services such as Ollama can be selected per
+  lab.
 - Tailscale Funnel for public HTTPS access to the local server.
 - MathJax loaded from a CDN for mathematical and chemical notation rendering.
 - QR code image generation is currently loaded from a third-party QR service in
@@ -54,7 +55,7 @@ not a target architecture.
 - `fastapi`
 - `uvicorn[standard]`
 - `python-multipart`
-- `google-genai`
+- `litellm`
 - `pypdf`
 - `python-pptx`
 - `python-docx`
@@ -63,7 +64,7 @@ not a target architecture.
 ## Testing
 
 - Pytest contract tests live in `tests/`.
-- Tests mock Gemini-facing functions and use isolated SQLite databases.
+- Tests mock LiteLLM-facing functions and use isolated SQLite databases.
 - Contract tests cover in-place schema upgrades and immutable generation
   metadata in addition to route and prompt behavior.
 - Static template tests verify important UI wiring such as chat logging controls

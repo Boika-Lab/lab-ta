@@ -44,18 +44,17 @@ future feature areas.
 - Anonymous quiz attempt stats through `GET /quiz/{quiz_id}/stats`.
 - LLM Prompt Externalization completed: prompt templates are stored as Markdown
   files under `prompts/` and loaded once at application startup/import.
-- Centralized Gemini Model Configuration completed: Gemini model names are
-  defined in `llm_config.py` as server-controlled constants for chat,
-  screening, and quiz generation, and the instructor landing page displays the
-  current read-only settings.
+- Multi-Provider LLM Configuration completed: all LLM calls use LiteLLM, each
+  lab stores immutable chat, screening, and quiz model identifiers, and local
+  providers can use an optional loopback API base URL.
 
 ## Current Quality and Process Features
 
 - Markdown specification workflow in `specs/`.
 - Current behavior spec for inherited app behavior.
 - Completed LLM Prompt Externalization spec.
-- Completed Centralized Gemini Model Configuration spec, including landing-page
-  display of current server-controlled model settings.
+- Completed Multi-Provider LLM Configuration spec, including provider-neutral
+  dispatch, setup validation, schema upgrades, and loopback endpoint controls.
 - Completed Quiz Completion Feedback spec.
 - Completed Optional Persistent Chat Logs spec, including SQLite upgrade
   behavior, route contracts, and template wiring tests.
@@ -89,9 +88,32 @@ future feature areas.
   no migration framework.
 - Automated tests cover backend route contracts and lightweight static template
   hooks, not full browser UI behavior.
-- Live Gemini calls are intentionally excluded from automated tests.
+- Live provider calls are intentionally excluded from automated tests.
 
 ## Completed Roadmap Items
+
+### Multi-Provider LLM Configuration
+
+Implement GitHub issue #11 by replacing direct Gemini SDK calls with LiteLLM
+and allowing instructors to select the model used for each LLM role.
+
+#### Implemented Behavior
+
+- Lab setup accepts freeform LiteLLM model identifiers for TA chat,
+  prompt-injection screening, and quiz generation.
+- The roles share an optional API key and optional loopback-only API base URL.
+- Every distinct model is validated with a minimal live call before the lab is
+  stored.
+- Model settings are immutable and visible read-only on the instructor
+  dashboard.
+- Existing Gemini model values are upgraded to LiteLLM provider-prefixed
+  identifiers.
+
+#### Non-Goals
+
+- No post-creation model editing.
+- No arbitrary remote custom API base URLs.
+- No separate credential or endpoint per role.
 
 ### Instructor Lab Index
 
@@ -210,6 +232,8 @@ unauthenticated token model.
 - No draft quiz recovery in the first dashboard version.
 
 ### Centralized Gemini Model Configuration
+
+Historical item superseded by Multi-Provider LLM Configuration.
 
 Centralize the currently hardcoded Gemini model names while keeping the app
 Gemini-only and preserving the current instructor workflow. This is the

@@ -1,18 +1,17 @@
-"""Gemini quiz generation for prelab quizzes."""
+"""Provider-neutral quiz generation through LiteLLM."""
 
 from __future__ import annotations
 
 import json
 
-from google import genai
-from google.genai import types
-
-import llm_config
+from llm_client import complete
 from prompt_loader import PROMPTS
 
 
 async def generate_quiz(
-    api_key: str,
+    api_key: str | None,
+    api_base: str | None,
+    model: str,
     document_text: str,
     n_questions: int,
     education_level: str,
@@ -20,7 +19,6 @@ async def generate_quiz(
     language: str,
     custom_instructions: str,
 ) -> list[dict]:
-    client = genai.Client(api_key=api_key)
     prompt = PROMPTS["quiz_generation"].render(
         n_questions=n_questions,
         document_text=document_text,
@@ -34,13 +32,14 @@ async def generate_quiz(
         ),
     )
 
-    response = await client.aio.models.generate_content(
-        model=llm_config.QUIZ_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(temperature=0.7),
+    raw = await complete(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        api_key=api_key,
+        api_base=api_base,
+        temperature=0.7,
     )
-
-    raw = response.text.strip()
+    raw = raw.strip()
     if raw.startswith("```"):
         lines = raw.splitlines()
         end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
@@ -49,10 +48,10 @@ async def generate_quiz(
     try:
         questions = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Gemini returned malformed JSON: {exc}") from exc
+        raise ValueError(f"LLM provider returned malformed JSON: {exc}") from exc
 
     if not isinstance(questions, list):
-        raise ValueError("Gemini response is not a JSON array")
+        raise ValueError("LLM provider response is not a JSON array")
 
     for i, q in enumerate(questions):
         missing = {"question", "choices", "correct", "explanation"} - set(q)

@@ -1,5 +1,8 @@
 # Spec: Centralized Gemini Model Configuration
 
+> Superseded by `multi-provider-llm-configuration.md`. This file records the
+> earlier Gemini-only design.
+
 ## Goal
 
 Centralize Gemini model names so runtime Python modules do not duplicate

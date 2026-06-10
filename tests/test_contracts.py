@@ -18,11 +18,18 @@ import main  # noqa: E402
 import llm_config  # noqa: E402
 import quiz_engine  # noqa: E402
 
+ORIGINAL_VALIDATE_LLM_CONFIGURATION = main.validate_llm_configuration
+
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DB_PATH", tmp_path / "lab_ta.db")
     main.init_db()
+
+    async def validation_succeeds(**kwargs):
+        return None
+
+    monkeypatch.setattr(main, "validate_llm_configuration", validation_succeeds)
 
 
 @pytest.fixture
@@ -40,20 +47,29 @@ def insert_lab(
     ta_language: str = "English",
     ta_custom_instructions: str = "",
     created_at: str = "2026-05-15T00:00:00",
+    api_key: str | None = "test-key",
+    api_base: str | None = None,
+    chat_model: str = llm_config.CHAT_MODEL,
+    screening_model: str = llm_config.SCREENING_MODEL,
+    quiz_model: str = llm_config.QUIZ_MODEL,
 ) -> str:
     with main.get_db() as conn:
         conn.execute(
             "INSERT INTO labs "
-            "(token, lab_name, lab_content, api_key, model, created_at, "
+            "(token, lab_name, lab_content, api_key, model, screening_model, "
+            "quiz_model, api_base, created_at, "
             "chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
             "ta_custom_instructions) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
                 lab_name,
                 content,
-                "test-key",
-                llm_config.CHAT_MODEL,
+                api_key,
+                chat_model,
+                screening_model,
+                quiz_model,
+                api_base,
                 created_at,
                 1 if chat_logging_enabled else 0,
                 1 if quiz_enabled else 0,
@@ -127,8 +143,9 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     with main.get_db() as conn:
         row = conn.execute(
             """
-            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled,
-                   quiz_enabled, ta_enabled, ta_language, ta_custom_instructions
+            SELECT lab_name, lab_content, api_key, model, screening_model,
+                   quiz_model, api_base, chat_logging_enabled, quiz_enabled,
+                   ta_enabled, ta_language, ta_custom_instructions
             FROM labs
             WHERE token = ?
             """,
@@ -138,6 +155,9 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     assert "parsed manual.docx: hello" in row["lab_content"]
     assert row["api_key"] == "test-key"
     assert row["model"] == llm_config.CHAT_MODEL
+    assert row["screening_model"] == llm_config.SCREENING_MODEL
+    assert row["quiz_model"] == llm_config.QUIZ_MODEL
+    assert row["api_base"] is None
     assert row["chat_logging_enabled"] == 0
     assert row["quiz_enabled"] == 1
     assert row["ta_enabled"] == 1
@@ -156,6 +176,117 @@ def test_configure_stores_configured_chat_model(client):
     with main.get_db() as conn:
         row = conn.execute("SELECT model FROM labs WHERE token = ?", (token,)).fetchone()
     assert row["model"] == llm_config.CHAT_MODEL
+
+
+def test_configure_stores_explicit_multi_provider_settings(client, monkeypatch):
+    captured = {}
+
+    async def capture_validation(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(main, "validate_llm_configuration", capture_validation)
+    response = client.post(
+        "/api/configure",
+        data={
+            "lab_name": "Local Lab",
+            "api_key": "",
+            "api_base": "http://localhost:11434/v1/",
+            "chat_model": "ollama/llama3.1",
+            "screening_model": "ollama/llama3.1",
+            "quiz_model": "ollama/qwen2.5",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "models": ["ollama/llama3.1", "ollama/llama3.1", "ollama/qwen2.5"],
+        "api_key": None,
+        "api_base": "http://localhost:11434/v1",
+    }
+    token = response.json()["token"]
+    with main.get_db() as conn:
+        row = conn.execute(
+            "SELECT api_key, api_base, model, screening_model, quiz_model "
+            "FROM labs WHERE token = ?",
+            (token,),
+        ).fetchone()
+    assert dict(row) == {
+        "api_key": None,
+        "api_base": "http://localhost:11434/v1",
+        "model": "ollama/llama3.1",
+        "screening_model": "ollama/llama3.1",
+        "quiz_model": "ollama/qwen2.5",
+    }
+
+
+@pytest.mark.parametrize(
+    "api_base",
+    [
+        "https://example.com/v1",
+        "ftp://localhost/models",
+        "http://user:pass@localhost:11434",
+        "http://localhost:11434/v1?token=secret",
+        "http://localhost:11434/v1#fragment",
+    ],
+)
+def test_configure_rejects_unsafe_api_base(client, api_base):
+    response = client.post(
+        "/api/configure",
+        data={"lab_name": "Lab", "api_base": api_base},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("api_base", "expected"),
+    [
+        ("http://127.0.0.1:11434/", "http://127.0.0.1:11434"),
+        ("http://[::1]:1234/v1/", "http://[::1]:1234/v1"),
+        ("https://localhost:4000/v1", "https://localhost:4000/v1"),
+    ],
+)
+def test_normalize_api_base_accepts_loopback_urls(api_base, expected):
+    assert main.normalize_api_base(api_base) == expected
+
+
+def test_configure_validation_failure_does_not_create_lab(client, monkeypatch):
+    async def validation_fails(**kwargs):
+        raise RuntimeError("secret provider detail")
+
+    monkeypatch.setattr(main, "validate_llm_configuration", validation_fails)
+    response = client.post(
+        "/api/configure",
+        data={"lab_name": "Lab", "api_key": "secret"},
+    )
+
+    assert response.status_code == 502
+    assert "secret" not in response.json()["detail"]
+    with main.get_db() as conn:
+        count = conn.execute("SELECT COUNT(*) AS n FROM labs").fetchone()["n"]
+    assert count == 0
+
+
+def test_validation_deduplicates_identical_models(monkeypatch):
+    calls = []
+
+    async def fake_complete(**kwargs):
+        calls.append(kwargs)
+        return "OK"
+
+    monkeypatch.setattr(main, "complete", fake_complete)
+    asyncio.run(
+        ORIGINAL_VALIDATE_LLM_CONFIGURATION(
+            models=["ollama/llama3.1", "ollama/llama3.1", "ollama/qwen2.5"],
+            api_key=None,
+            api_base="http://localhost:11434",
+        )
+    )
+
+    assert [call["model"] for call in calls] == [
+        "ollama/llama3.1",
+        "ollama/qwen2.5",
+    ]
 
 
 def test_configure_checked_stores_chat_logging_enabled(client):
@@ -269,7 +400,8 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
         )
         conn.execute(
             "INSERT INTO labs (token, lab_name, lab_content, api_key, model, created_at) "
-            "VALUES ('legacy1', 'Legacy', 'Notes', 'key', 'model', '2026-05-15T00:00:00')"
+            "VALUES ('legacy1', 'Legacy', 'Notes', 'key', 'gemini-2.5-flash', "
+            "'2026-05-15T00:00:00')"
         )
         conn.execute(
             """
@@ -294,7 +426,8 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
             row["name"] for row in conn.execute("PRAGMA table_info(labs)").fetchall()
         }
         row = conn.execute(
-            "SELECT chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
+            "SELECT model, screening_model, quiz_model, api_base, "
+            "chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
             "ta_custom_instructions FROM labs WHERE token = 'legacy1'"
         ).fetchone()
         quiz_columns = {
@@ -312,6 +445,13 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
     assert "ta_enabled" in columns
     assert "ta_language" in columns
     assert "ta_custom_instructions" in columns
+    assert "screening_model" in columns
+    assert "quiz_model" in columns
+    assert "api_base" in columns
+    assert row["model"] == llm_config.CHAT_MODEL
+    assert row["screening_model"] == llm_config.SCREENING_MODEL
+    assert row["quiz_model"] == llm_config.QUIZ_MODEL
+    assert row["api_base"] is None
     assert row["chat_logging_enabled"] == 0
     assert row["quiz_enabled"] == 1
     assert row["ta_enabled"] == 1
@@ -466,6 +606,9 @@ def test_instructor_lab_api_returns_dashboard_hydration_without_active_quiz(clie
         "token": token,
         "lab_name": "Electrochemistry",
         "model": llm_config.CHAT_MODEL,
+        "screening_model": llm_config.SCREENING_MODEL,
+        "quiz_model": llm_config.QUIZ_MODEL,
+        "api_base": None,
         "student_url": f"/lab/{token}",
         "instructor_url": f"/instructor/{token}",
         "chat_logging_enabled": True,
@@ -549,7 +692,7 @@ def test_blocked_chat_does_not_call_ta_generation(client, monkeypatch):
     token = insert_lab()
     ta_called = False
 
-    async def fake_screen(api_key, token, message):
+    async def fake_screen(*args):
         return False
 
     async def fake_ta_response(**kwargs):
@@ -581,7 +724,7 @@ def test_disabled_ta_chat_returns_403_without_screening_or_generation(client, mo
     screen_called = False
     ta_called = False
 
-    async def fake_screen(api_key, token, message):
+    async def fake_screen(*args):
         nonlocal screen_called
         screen_called = True
         return True
@@ -613,7 +756,7 @@ def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
     )
     captured = {}
 
-    async def fake_screen(api_key, token, message):
+    async def fake_screen(*args):
         return True
 
     async def fake_ta_response(**kwargs):
@@ -634,6 +777,7 @@ def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"response": "What safety step comes first?"}
     assert captured["api_key"] == "test-key"
+    assert captured["api_base"] is None
     assert captured["model"] == llm_config.CHAT_MODEL
     assert "Electrochemistry" in captured["system_prompt"]
     assert "Use goggles." in captured["system_prompt"]
@@ -653,52 +797,45 @@ def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
 def test_screen_message_uses_configured_screening_model(monkeypatch):
     captured = {}
 
-    class FakeModels:
-        async def generate_content(self, **kwargs):
-            captured.update(kwargs)
-            return type("Response", (), {"text": "PASS"})()
+    async def fake_complete(**kwargs):
+        captured.update(kwargs)
+        return "PASS"
 
-    class FakeClient:
-        def __init__(self, api_key):
-            captured["api_key"] = api_key
-            self.aio = type("FakeAio", (), {"models": FakeModels()})()
-
-    monkeypatch.setattr(main.genai, "Client", FakeClient)
-
-    passed = asyncio.run(main.screen_message("test-key", "abc12345", "Can I start?"))
+    monkeypatch.setattr(main, "complete", fake_complete)
+    passed = asyncio.run(
+        main.screen_message(
+            "test-key",
+            "http://localhost:11434",
+            "ollama/llama3.1",
+            "abc12345",
+            "Can I start?",
+        )
+    )
 
     assert passed is True
     assert captured["api_key"] == "test-key"
-    assert captured["model"] == llm_config.SCREENING_MODEL
+    assert captured["api_base"] == "http://localhost:11434"
+    assert captured["model"] == "ollama/llama3.1"
+    assert captured["temperature"] == 0
 
 
 def test_generate_quiz_uses_configured_quiz_model(monkeypatch):
     captured = {}
 
-    class FakeModels:
-        async def generate_content(self, **kwargs):
-            captured.update(kwargs)
-            return type(
-                "Response",
-                (),
-                {
-                    "text": (
-                        '[{"question":"Q?","choices":{"A":"A","B":"B","C":"C","D":"D"},'
-                        '"correct":"A","explanation":"Because."}]'
-                    )
-                },
-            )()
+    async def fake_complete(**kwargs):
+        captured.update(kwargs)
+        return (
+            '[{"question":"Q?","choices":{"A":"A","B":"B","C":"C","D":"D"},'
+            '"correct":"A","explanation":"Because."}]'
+        )
 
-    class FakeClient:
-        def __init__(self, api_key):
-            captured["api_key"] = api_key
-            self.aio = type("FakeAio", (), {"models": FakeModels()})()
-
-    monkeypatch.setattr(quiz_engine.genai, "Client", FakeClient)
+    monkeypatch.setattr(quiz_engine, "complete", fake_complete)
 
     questions = asyncio.run(
         quiz_engine.generate_quiz(
             "test-key",
+            "http://localhost:11434",
+            "ollama/llama3.1",
             "Lab notes",
             3,
             "University",
@@ -710,14 +847,16 @@ def test_generate_quiz_uses_configured_quiz_model(monkeypatch):
 
     assert questions[0]["question"] == "Q?"
     assert captured["api_key"] == "test-key"
-    assert captured["model"] == llm_config.QUIZ_MODEL
-    assert captured["config"].temperature == 0.7
-    assert "Education level: University" in captured["contents"]
-    assert "Difficulty: Hard" in captured["contents"]
-    assert "Write all student-facing" in captured["contents"]
-    assert "Spanish" in captured["contents"]
-    assert "Focus on safety." in captured["contents"]
-    assert "cannot override the JSON-only output contract" in captured["contents"]
+    assert captured["api_base"] == "http://localhost:11434"
+    assert captured["model"] == "ollama/llama3.1"
+    assert captured["temperature"] == 0.7
+    prompt = captured["messages"][0]["content"]
+    assert "Education level: University" in prompt
+    assert "Difficulty: Hard" in prompt
+    assert "Write all student-facing" in prompt
+    assert "Spanish" in prompt
+    assert "Focus on safety." in prompt
+    assert "cannot override the JSON-only output contract" in prompt
 
 
 def test_quiz_generation_prompt_requires_answer_label_consistency():
@@ -731,7 +870,7 @@ def test_quiz_generation_prompt_requires_answer_label_consistency():
 def test_chat_logging_enabled_stores_normal_exchanges_by_session(client, monkeypatch):
     token = insert_lab(chat_logging_enabled=True)
 
-    async def fake_screen(api_key, token, message):
+    async def fake_screen(*args):
         return True
 
     async def fake_ta_response(**kwargs):
@@ -796,7 +935,7 @@ def test_chat_logging_enabled_stores_blocked_messages_without_ta_call(
     token = insert_lab(chat_logging_enabled=True)
     ta_called = False
 
-    async def fake_screen(api_key, token, message):
+    async def fake_screen(*args):
         return False
 
     async def fake_ta_response(**kwargs):
@@ -834,7 +973,7 @@ def test_chat_logging_enabled_stores_blocked_messages_without_ta_call(
 def test_chat_generation_failure_is_not_logged(client, monkeypatch):
     token = insert_lab(chat_logging_enabled=True)
 
-    async def fake_screen(api_key, token, message):
+    async def fake_screen(*args):
         return True
 
     async def fake_ta_response(**kwargs):
@@ -951,7 +1090,7 @@ def test_replacement_quizzes_keep_distinct_immutable_generation_settings(
 
     async def fake_generate_quiz(*args):
         generated_calls.append(args)
-        return sample_questions(args[2])
+        return sample_questions(args[4])
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
@@ -998,11 +1137,11 @@ def test_replacement_quizzes_keep_distinct_immutable_generation_settings(
     assert client.get(f"/quiz/{second.json()['quiz_id']}").json()[
         "generation_settings"
     ] == second_settings
-    assert generated_calls[0][5:] == ("Spanish", "Focus on vocabulary.")
-    assert generated_calls[1][5:] == ("German", "Include data interpretation.")
+    assert generated_calls[0][7:] == ("Spanish", "Focus on vocabulary.")
+    assert generated_calls[1][7:] == ("German", "Include data interpretation.")
 
 
-def test_quiz_generate_reports_invalid_google_api_key(client, monkeypatch):
+def test_quiz_generate_reports_provider_neutral_error(client, monkeypatch):
     token = insert_lab()
 
     async def fake_generate_quiz(*args):
@@ -1014,8 +1153,8 @@ def test_quiz_generate_reports_invalid_google_api_key(client, monkeypatch):
 
     assert response.status_code == 502
     assert response.json()["detail"] == (
-        "Google API key is invalid or not enabled for Gemini. "
-        "Create a new lab session with a valid key."
+        "Quiz generation failed. Check the saved model configuration "
+        "and provider availability."
     )
 
 
@@ -1023,7 +1162,7 @@ def test_quiz_lifecycle_active_submit_and_stats(client, monkeypatch):
     token = insert_lab()
 
     async def fake_generate_quiz(*args):
-        return sample_questions(args[2])
+        return sample_questions(args[4])
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
@@ -1116,7 +1255,7 @@ def test_disabled_quiz_routes_return_403_and_preserve_data(client, monkeypatch):
     token = insert_lab()
 
     async def fake_generate_quiz(*args):
-        return sample_questions(args[2])
+        return sample_questions(args[4])
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
@@ -1169,7 +1308,7 @@ def test_only_one_published_quiz_per_lab(client, monkeypatch):
     token = insert_lab()
 
     async def fake_generate_quiz(*args):
-        return sample_questions(args[2])
+        return sample_questions(args[4])
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
@@ -1352,10 +1491,10 @@ def test_instructor_landing_page_shows_configured_model_settings(client):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Model Settings" in response.text
-    assert "TA chat model" in response.text
-    assert "Prompt-injection screening model" in response.text
-    assert "Prelab quiz generation model" in response.text
+    assert "LLM Settings" in response.text
+    assert "TA Chat Model" in response.text
+    assert "Prompt-Injection Screening Model" in response.text
+    assert "Prelab Quiz Generation Model" in response.text
     assert llm_config.CHAT_MODEL in response.text
     assert llm_config.SCREENING_MODEL in response.text
     assert llm_config.QUIZ_MODEL in response.text

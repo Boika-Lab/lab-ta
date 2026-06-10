@@ -7,19 +7,19 @@ import os
 import random
 import sqlite3
 import string
-from html import escape
 from datetime import UTC, datetime
+from html import escape
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
-from google import genai
-from google.genai import types
 from pydantic import BaseModel
 
 from document_parser import parse_uploaded_file
 import llm_config
+from llm_client import complete
 from prompt_loader import PROMPTS
 from quiz_engine import generate_quiz
 from ta_engine import build_system_prompt, get_ta_response
@@ -49,6 +49,9 @@ def init_db() -> None:
                 lab_content TEXT,
                 api_key    TEXT,
                 model      TEXT,
+                screening_model TEXT NOT NULL DEFAULT 'gemini/gemini-2.5-flash-lite',
+                quiz_model TEXT NOT NULL DEFAULT 'gemini/gemini-2.5-flash',
+                api_base TEXT NULL,
                 created_at TIMESTAMP,
                 chat_logging_enabled INTEGER NOT NULL DEFAULT 0,
                 quiz_enabled INTEGER NOT NULL DEFAULT 1,
@@ -80,6 +83,25 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE labs ADD COLUMN ta_custom_instructions TEXT NOT NULL DEFAULT ''"
             )
+        if "screening_model" not in lab_columns:
+            conn.execute(
+                "ALTER TABLE labs ADD COLUMN screening_model TEXT NOT NULL "
+                f"DEFAULT '{llm_config.SCREENING_MODEL}'"
+            )
+        if "quiz_model" not in lab_columns:
+            conn.execute(
+                "ALTER TABLE labs ADD COLUMN quiz_model TEXT NOT NULL "
+                f"DEFAULT '{llm_config.QUIZ_MODEL}'"
+            )
+        if "api_base" not in lab_columns:
+            conn.execute("ALTER TABLE labs ADD COLUMN api_base TEXT NULL")
+        conn.execute(
+            """
+            UPDATE labs
+            SET model = 'gemini/' || model
+            WHERE model LIKE 'gemini-%'
+            """
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS quizzes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -301,6 +323,64 @@ def normalize_custom_instructions(value: str, field_name: str) -> str:
     return normalized
 
 
+def normalize_model(value: str, field_name: str, default: str) -> str:
+    normalized = value.strip() or default
+    if len(normalized) > 200:
+        raise HTTPException(
+            status_code=400, detail=f"{field_name} must be at most 200 characters"
+        )
+    return normalized
+
+
+def normalize_api_base(value: str) -> str | None:
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        parsed = urlsplit(normalized)
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="api_base is not a valid URL") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(
+            status_code=400, detail="api_base must be an HTTP(S) loopback URL"
+        )
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise HTTPException(
+            status_code=400,
+            detail="api_base must not contain credentials, a query, or a fragment",
+        )
+    if parsed.hostname.lower() not in {"localhost", "127.0.0.1", "::1"}:
+        raise HTTPException(
+            status_code=400,
+            detail="api_base must target localhost, 127.0.0.1, or ::1",
+        )
+    hostname = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    netloc = f"{hostname}:{port}" if port is not None else hostname
+    return urlunsplit((parsed.scheme, netloc, parsed.path.rstrip("/"), "", ""))
+
+
+async def validate_llm_configuration(
+    *,
+    models: list[str],
+    api_key: str | None,
+    api_base: str | None,
+) -> None:
+    for model in dict.fromkeys(models):
+        await complete(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": "Reply with exactly OK.",
+                }
+            ],
+            api_key=api_key,
+            api_base=api_base,
+            temperature=0,
+        )
+
+
 def quiz_generation_settings(row: sqlite3.Row) -> dict:
     return {
         "education_level": row["education_level"],
@@ -335,21 +415,28 @@ async def student_chat(token: str) -> HTMLResponse:
     return HTMLResponse(content=load_html("student.html"))
 
 
-async def screen_message(api_key: str, token: str, message: str) -> bool:
+async def screen_message(
+    api_key: str | None,
+    api_base: str | None,
+    model: str,
+    token: str,
+    message: str,
+) -> bool:
     """Return True if the message should be allowed through, False to block it.
 
-    Calls Gemini to classify the message. Defaults to PASS on any error so
-    that a screening failure never breaks the student experience.
+    Calls the configured model to classify the message. Defaults to PASS on any
+    error so that a screening failure never breaks the student experience.
     """
     try:
-        client = genai.Client(api_key=api_key)
         prompt = PROMPTS["screening"].render(message=message)
-        response = await client.aio.models.generate_content(
-            model=llm_config.SCREENING_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0),
+        verdict = await complete(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            api_key=api_key,
+            api_base=api_base,
+            temperature=0,
         )
-        verdict = response.text.strip().upper()
+        verdict = verdict.strip().upper()
         if verdict == "BLOCK":
             logging.warning(
                 "Screening blocked message for token=%s: %r", token, message
@@ -362,7 +449,11 @@ async def screen_message(api_key: str, token: str, message: str) -> bool:
 
 @app.post("/api/configure")
 async def configure(
-    api_key: str = Form(...),
+    api_key: str = Form(""),
+    api_base: str = Form(""),
+    chat_model: str = Form(llm_config.CHAT_MODEL),
+    screening_model: str = Form(llm_config.SCREENING_MODEL),
+    quiz_model: str = Form(llm_config.QUIZ_MODEL),
     lab_name: str = Form(...),
     quiz_enabled: bool = Form(True),
     ta_enabled: bool = Form(True),
@@ -371,6 +462,13 @@ async def configure(
     chat_logging_enabled: bool = Form(False),
     files: list[UploadFile] = File(default=[]),
 ):
+    normalized_api_key = api_key.strip() or None
+    normalized_api_base = normalize_api_base(api_base)
+    chat_model = normalize_model(chat_model, "chat_model", llm_config.CHAT_MODEL)
+    screening_model = normalize_model(
+        screening_model, "screening_model", llm_config.SCREENING_MODEL
+    )
+    quiz_model = normalize_model(quiz_model, "quiz_model", llm_config.QUIZ_MODEL)
     ta_language = normalize_language(ta_language, "ta_language")
     ta_custom_instructions = normalize_custom_instructions(
         ta_custom_instructions, "ta_custom_instructions"
@@ -387,22 +485,39 @@ async def configure(
     lab_content = "\n\n".join(parts)
     token = generate_token()
 
+    try:
+        await validate_llm_configuration(
+            models=[chat_model, screening_model, quiz_model],
+            api_key=normalized_api_key,
+            api_base=normalized_api_base,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="LLM configuration validation failed. Check the model names, "
+            "credentials, and API base URL.",
+        ) from exc
+
     with get_db() as conn:
         # Ensure uniqueness (astronomically unlikely but correct)
         while conn.execute("SELECT 1 FROM labs WHERE token = ?", (token,)).fetchone():
             token = generate_token()
         conn.execute(
             "INSERT INTO labs "
-            "(token, lab_name, lab_content, api_key, model, created_at, "
+            "(token, lab_name, lab_content, api_key, model, screening_model, "
+            "quiz_model, api_base, created_at, "
             "chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
             "ta_custom_instructions) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
                 lab_name,
                 lab_content,
-                api_key,
-                llm_config.CHAT_MODEL,
+                normalized_api_key,
+                chat_model,
+                screening_model,
+                quiz_model,
+                normalized_api_base,
                 datetime.now(UTC).isoformat(),
                 1 if chat_logging_enabled else 0,
                 1 if quiz_enabled else 0,
@@ -494,8 +609,9 @@ async def get_instructor_lab(token: str):
     with get_db() as conn:
         lab = conn.execute(
             """
-            SELECT lab_name, model, chat_logging_enabled, quiz_enabled, ta_enabled,
-                   ta_language, ta_custom_instructions
+            SELECT lab_name, model, screening_model, quiz_model, api_base,
+                   chat_logging_enabled, quiz_enabled, ta_enabled, ta_language,
+                   ta_custom_instructions
             FROM labs
             WHERE token = ?
             """,
@@ -529,6 +645,9 @@ async def get_instructor_lab(token: str):
         "token": token,
         "lab_name": lab["lab_name"],
         "model": lab["model"],
+        "screening_model": lab["screening_model"],
+        "quiz_model": lab["quiz_model"],
+        "api_base": lab["api_base"],
         "student_url": f"/lab/{token}",
         "instructor_url": f"/instructor/{token}",
         "chat_logging_enabled": bool(lab["chat_logging_enabled"]),
@@ -563,8 +682,9 @@ async def chat(token: str, req: ChatRequest):
     with get_db() as conn:
         row = conn.execute(
             """
-            SELECT lab_name, lab_content, api_key, model, chat_logging_enabled,
-                   ta_enabled, ta_language, ta_custom_instructions
+            SELECT lab_name, lab_content, api_key, model, screening_model, api_base,
+                   chat_logging_enabled, ta_enabled, ta_language,
+                   ta_custom_instructions
             FROM labs
             WHERE token = ?
             """,
@@ -583,7 +703,13 @@ async def chat(token: str, req: ChatRequest):
     )
     full_history = req.history + [{"role": "user", "text": req.message}]
 
-    passed = await screen_message(row["api_key"], token, req.message)
+    passed = await screen_message(
+        row["api_key"],
+        row["api_base"],
+        row["screening_model"],
+        token,
+        req.message,
+    )
     if not passed:
         refusal = "I can only help with questions about this lab activity."
         if row["chat_logging_enabled"]:
@@ -593,6 +719,7 @@ async def chat(token: str, req: ChatRequest):
     try:
         ta_response = await get_ta_response(
             api_key=row["api_key"],
+            api_base=row["api_base"],
             model=row["model"],
             system_prompt=system_prompt,
             history=full_history,
@@ -693,7 +820,9 @@ async def quiz_generate(req: GenerateQuizRequest):
     with get_db() as conn:
         require_quiz_enabled_for_token(conn, req.token)
         row = conn.execute(
-            "SELECT lab_content, api_key FROM labs WHERE token = ?", (req.token,)
+            "SELECT lab_content, api_key, api_base, quiz_model "
+            "FROM labs WHERE token = ?",
+            (req.token,),
         ).fetchone()
     if not row["lab_content"] or not row["lab_content"].strip():
         raise HTTPException(status_code=400, detail="No document text available for this lab")
@@ -703,6 +832,8 @@ async def quiz_generate(req: GenerateQuizRequest):
     try:
         questions = await generate_quiz(
             row["api_key"],
+            row["api_base"],
+            row["quiz_model"],
             row["lab_content"],
             req.n_questions,
             req.education_level,
@@ -713,15 +844,11 @@ async def quiz_generate(req: GenerateQuizRequest):
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=f"Quiz generation failed — please try again. ({exc})") from exc
     except Exception as exc:
-        message = str(exc)
-        if "API_KEY_INVALID" in message or "API key not valid" in message:
-            detail = (
-                "Google API key is invalid or not enabled for Gemini. "
-                "Create a new lab session with a valid key."
-            )
-        else:
-            detail = f"Gemini quiz generation failed: {message}"
-        raise HTTPException(status_code=502, detail=detail) from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Quiz generation failed. Check the saved model configuration "
+            "and provider availability.",
+        ) from exc
 
     with get_db() as conn:
         cur = conn.execute(

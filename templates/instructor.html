@@ -458,22 +458,23 @@
       <label for="lab-name">Lab Name</label>
       <input type="text" id="lab-name" name="lab_name" placeholder="e.g. Enzyme Kinetics Lab" required />
 
-      <label for="api-key">Google API Key</label>
-      <input type="password" id="api-key" name="api_key" placeholder="AIza..." required />
+      <label for="api-key">Provider API Key (Optional)</label>
+      <input type="password" id="api-key" name="api_key" placeholder="Required by most hosted providers" />
 
       <section class="model-settings" aria-labelledby="model-settings-title">
-        <div class="model-settings-title" id="model-settings-title">Model Settings</div>
-        <div class="model-settings-row">
-          <span class="model-role">TA chat model</span>
-          <span class="model-value">{{CHAT_MODEL}}</span>
-        </div>
-        <div class="model-settings-row">
-          <span class="model-role">Prompt-injection screening model</span>
-          <span class="model-value">{{SCREENING_MODEL}}</span>
-        </div>
-        <div class="model-settings-row">
-          <span class="model-role">Prelab quiz generation model</span>
-          <span class="model-value">{{QUIZ_MODEL}}</span>
+        <div class="model-settings-title" id="model-settings-title">LLM Settings</div>
+        <label for="chat-model">TA Chat Model</label>
+        <input type="text" id="chat-model" name="chat_model" maxlength="200" value="{{CHAT_MODEL}}" required />
+        <label for="screening-model">Prompt-Injection Screening Model</label>
+        <input type="text" id="screening-model" name="screening_model" maxlength="200" value="{{SCREENING_MODEL}}" required />
+        <label for="quiz-model">Prelab Quiz Generation Model</label>
+        <input type="text" id="quiz-model" name="quiz_model" maxlength="200" value="{{QUIZ_MODEL}}" required />
+        <label for="api-base">Local API Base URL (Optional)</label>
+        <input type="url" id="api-base" name="api_base" placeholder="http://localhost:11434" />
+        <div class="feature-note">
+          Use LiteLLM model identifiers such as <code>gemini/&lt;model&gt;</code>
+          or <code>ollama/llama3.1</code>. Custom API base URLs must use localhost,
+          127.0.0.1, or ::1. These settings cannot be changed after lab creation.
         </div>
       </section>
 
@@ -572,6 +573,7 @@
 
       <div class="logs-panel" id="feature-availability-panel">
         <div style="font-size:1rem;font-weight:700;color:#1a1a2e;margin-bottom:0.85rem;">Feature Availability</div>
+        <div id="llm-settings-summary" class="settings-summary" style="margin-bottom:0.85rem;"></div>
         <div class="feature-settings" style="margin-top:0;">
           <div class="feature-group">
             <div class="feature-group-title">Quiz Generation</div>
@@ -802,6 +804,12 @@
       taEnabled = data.ta_enabled;
       chatLoggingEnabled = data.chat_logging_enabled;
       lastChatLogs = null;
+      document.getElementById('llm-settings-summary').innerHTML = `<dl>
+        <dt>TA chat model</dt><dd>${escHtml(data.model)}</dd>
+        <dt>Screening model</dt><dd>${escHtml(data.screening_model)}</dd>
+        <dt>Quiz model</dt><dd>${escHtml(data.quiz_model)}</dd>
+        <dt>API base</dt><dd>${escHtml(data.api_base || 'Provider default')}</dd>
+      </dl>`;
       document.getElementById('ta-settings-summary').innerHTML = `<dl>
         <dt>Language</dt><dd>${escHtml(data.ta_language)}</dd>
         <dt>Custom instructions</dt><dd>${escHtml(data.ta_custom_instructions || 'None')}</dd>

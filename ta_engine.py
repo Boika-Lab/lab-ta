@@ -1,10 +1,8 @@
-"""Gemini-powered Socratic TA engine using the google-genai SDK."""
+"""Provider-neutral Socratic TA engine using LiteLLM."""
 
 from __future__ import annotations
 
-from google import genai
-from google.genai import types
-
+from llm_client import complete
 from prompt_loader import PROMPTS
 
 
@@ -29,35 +27,31 @@ def build_system_prompt(
 
 
 async def get_ta_response(
-    api_key: str,
+    api_key: str | None,
+    api_base: str | None,
     model: str,
     system_prompt: str,
     history: list[dict],
 ) -> str:
     """
-    Send the full conversation history to Gemini and return the assistant reply.
+    Send the full conversation history and return the assistant reply.
 
     history: list of {"role": "user"|"model", "text": str}
     """
-    client = genai.Client(api_key=api_key)
-
-    contents = [
-        types.Content(
-            role=msg["role"],
-            parts=[types.Part.from_text(text=msg["text"])],
-        )
-        for msg in history
+    messages = [
+        {"role": "system", "content": system_prompt},
+        *[
+            {
+                "role": "assistant" if msg["role"] == "model" else msg["role"],
+                "content": msg["text"],
+            }
+            for msg in history
+        ],
     ]
-
-    config = types.GenerateContentConfig(
-        system_instruction=system_prompt,
+    return await complete(
+        model=model,
+        messages=messages,
+        api_key=api_key,
+        api_base=api_base,
         temperature=0.7,
     )
-
-    response = await client.aio.models.generate_content(
-        model=model,
-        contents=contents,
-        config=config,
-    )
-
-    return response.text

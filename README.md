@@ -1,6 +1,7 @@
 # Lab TA
 
-A Socratic teaching assistant for university lab courses, powered by Google Gemini with Gemini 2.5 Flash defaults.
+A Socratic teaching assistant for university lab courses, powered through
+LiteLLM with Gemini 2.5 Flash defaults and support for hosted or local models.
 
 Instructors upload their lab materials once and get a shareable link with a QR code. Students open that link on any device to chat with the TA — by text or voice. The TA never gives direct answers; it guides students toward understanding through questions and hints, using only the content from the uploaded lab documents.
 
@@ -33,8 +34,8 @@ Instructors can also reopen past lab sessions from the saved-labs index at
 Instructor                          Students
 ─────────                          ────────
 Opens the app  ──►  Fills in:       Open the student URL in Chrome
-                    • Google API    (phone, tablet, or laptop)
-                      key                │
+                    • Provider API (phone, tablet, or laptop)
+                      key/model          │
                     • Lab name           │
                     • Lab files          ▼
                     (PDF/PPTX/DOCX)  Chat with the TA by typing
@@ -55,9 +56,10 @@ Each lab session is independent — you can run multiple labs at the same time (
 | Component | File | Description |
 |-----------|------|-------------|
 | Backend | `main.py` | FastAPI app running on port 8000; handles all API routes and the SQLite database |
-| Model config | `llm_config.py` | Server-controlled Gemini model names for chat, screening, and quiz generation |
-| TA Logic | `ta_engine.py` | Builds the Socratic system prompt and calls the Gemini API |
-| Quiz Logic | `quiz_engine.py` | Generates Gemini-backed multiple-choice prelab quizzes |
+| LLM adapter | `llm_client.py` | Sends provider-neutral asynchronous completions through LiteLLM |
+| Model defaults | `llm_config.py` | Default model identifiers for chat, screening, and quiz generation |
+| TA Logic | `ta_engine.py` | Builds the Socratic system prompt and calls the configured model |
+| Quiz Logic | `quiz_engine.py` | Generates provider-neutral multiple-choice prelab quizzes |
 | Document Parsing | `document_parser.py` | Extracts text from uploaded PDF, PPTX, and DOCX files |
 | Instructor UI | `templates/instructor.html` | Web form for lab setup; displays QR code and student link |
 | Student UI | `templates/student.html` | Chat interface with voice input, text-to-speech, and MathJax rendering |
@@ -70,7 +72,7 @@ Student types/speaks  →  POST /api/chat/{token}  →  ta_engine.py builds
 a question                                           system prompt from
                                                      lab content in DB
                                                           │
-Student sees the   ←──  Gemini API returns  ←────────────┘
+Student sees the   ←──  LLM provider returns  ←──────────┘
 TA's response            a Socratic reply
 (rendered with MathJax,
  read aloud via TTS)
@@ -95,7 +97,11 @@ There is no developer mode, debug mode, or administrator override — these do n
 
 **Layer 2 — Input screening**
 
-Before each student message reaches the main Gemini chat model, a separate Gemini screening call classifies the message. The screener is given a single task: decide whether the message is a legitimate chemistry lab question or an attempt to manipulate the AI, extract system instructions, jailbreak the model, or impersonate an authority figure. If it returns `BLOCK`, the main model is never called and the student sees a neutral refusal message. If the screening call itself fails for any reason, the message is allowed through — a screening error will never interrupt a legitimate student session.
+Before each student message reaches the main chat model, a separate configured
+screening model classifies the message. If it returns `BLOCK`, the main model is
+never called and the student sees a neutral refusal message. If screening fails,
+the message is allowed through so a provider error does not interrupt a
+legitimate student session.
 
 **Logging**
 
@@ -109,17 +115,20 @@ The saved-labs index at `/instructor/labs` uses the same unauthenticated model.
 Anyone with that URL can view local lab metadata and open clickable instructor
 dashboard or student links for saved sessions.
 
-**API key security**
+**Provider credential security**
 
-Treat your Google API key as a password. It is submitted through the instructor portal, stored in the local SQLite database, and used server-side for every API call — students never see it. Do not share it, do not commit it to version control, and regenerate it immediately if you believe it has been exposed. You can manage and revoke keys at [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+Treat any provider API key as a password. It is stored in local SQLite and used
+only server-side; students never receive it. Local providers may omit the key.
 
-**Server-controlled Gemini models**
+**Per-lab LLM models**
 
-The app uses `gemini-2.5-flash` for TA chat and quiz generation, and `gemini-2.5-flash-lite` for prompt-injection screening. These server-controlled model names are defined in `llm_config.py`.
-
-The instructor setup form does not include a model picker. Newly created labs store the configured chat model at creation time, and existing lab rows continue using their stored model value.
-
-> **Note on discontinued models:** The `gemini-2.0-flash` and `gemini-2.0-flash-lite` model names have been discontinued and are no longer supported by the Gemini API. If you encounter errors referencing a discontinued model name in an older database row, create a new lab session so it stores the current configured chat model.
+The setup form accepts LiteLLM model identifiers for TA chat, screening, and
+quiz generation. Defaults are `gemini/gemini-2.5-flash` and
+`gemini/gemini-2.5-flash-lite`. The three roles share one optional API key and
+optional API base URL. Custom base URLs are restricted to loopback addresses to
+prevent unauthenticated setup requests from reaching arbitrary network targets.
+Every distinct model is validated before the lab is saved, and these settings
+are immutable afterward.
 
 ---
 
@@ -129,8 +138,8 @@ Before you begin, make sure the following are in place on the **server machine**
 
 - **Operating system:** Ubuntu 24 desktop (other Linux versions likely work too)
 - **Python 3.9 or newer** — check with `python3 --version`
-- **Google API key** with Gemini API enabled
-  — get one free at [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+- Credentials for the selected hosted provider, or a local LiteLLM-compatible
+  service such as Ollama
 - **Tailscale** installed on the server machine
   — download at [https://tailscale.com/download](https://tailscale.com/download)
   — needed to give students a secure HTTPS URL and to enable voice input
@@ -231,7 +240,11 @@ instructor dashboard and student URL.
 
 | Field | What to enter |
 |-------|--------------|
-| **Google API Key** | Paste your API key from [Google AI Studio](https://aistudio.google.com/apikey). It starts with `AIza...`. This is stored securely on the server and never shown to students. |
+| **Provider API Key** | Optional shared credential for the selected hosted provider. Local providers may leave it blank. |
+| **TA Chat Model** | LiteLLM model identifier used for Socratic responses, such as `gemini/gemini-2.5-flash` or `ollama/llama3.1`. |
+| **Screening Model** | Model used for prompt-injection screening. |
+| **Quiz Model** | Model used for prelab quiz generation. |
+| **Local API Base URL** | Optional loopback HTTP(S) URL such as `http://localhost:11434`; remote custom URLs are rejected. |
 | **Lab Name** | A short descriptive name, e.g. `Electrochemistry Lab` or `Enzyme Kinetics`. This appears in the student chat header. |
 | **Lab Documents** | Upload one or more files in **PDF, PPTX, or DOCX** format. You can select multiple files at once. The TA will base all its guidance exclusively on the content of these files. |
 | **Quiz Generation** | Enabled by default. Uncheck this if students should not see or take a prelab quiz for this lab. |
@@ -348,10 +361,11 @@ All mathematical and chemical notation in TA responses uses LaTeX formatting so 
 lab-ta/
 ├── main.py              FastAPI app — all API routes, SQLite database
 │                        setup, request handling
-├── llm_config.py        Server-controlled Gemini model role configuration
+├── llm_client.py        Provider-neutral LiteLLM completion adapter
+├── llm_config.py        Default model role identifiers
 ├── prompt_loader.py     Loads and validates Markdown prompt templates
-├── ta_engine.py         Gemini API calls + Socratic system prompt rendering
-├── quiz_engine.py       Gemini prelab quiz generation
+├── ta_engine.py         Provider-neutral calls + Socratic prompt rendering
+├── quiz_engine.py       Provider-neutral prelab quiz generation
 ├── document_parser.py   Text extraction from uploaded PDF, PPTX, and DOCX
 │                        files; returns plain text for storage in the DB
 ├── prompts/             Markdown prompt templates for TA chat, screening,
@@ -385,7 +399,7 @@ Lab TA uses a pragmatic specification-driven development workflow:
 3. Implement the smallest change that satisfies the spec.
 4. Run `python -m pytest` before handing off or merging.
 
-Gemini calls must be mocked in automated tests. Tests should exercise public
+LiteLLM calls must be mocked in automated tests. Tests should exercise public
 routes and use isolated local data.
 
 ---
@@ -442,19 +456,20 @@ sudo tailscale up
 
 ### 500 error in the chat
 
-Usually caused by an invalid or expired Google API key.
+Usually caused by an invalid credential, model identifier, or unavailable local
+provider.
 
-1. Go to [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-2. Generate a new API key
-3. Return to the instructor portal and create a new lab session with the new key
+1. Verify the provider credential and LiteLLM model identifier.
+2. For local providers, verify the service is listening on the configured
+   loopback URL.
+3. Create a new lab because model settings are immutable.
 
-### Gemini quota error (429 — Too Many Requests)
+### Provider quota error (429 - Too Many Requests)
 
-You have exceeded Google's free-tier rate limits for the Gemini API.
+You have exceeded the selected provider's rate limits or quota.
 
-- Check your usage at [https://ai.dev/rate-limit](https://ai.dev/rate-limit)
-- Wait a few minutes and try again — free-tier limits reset periodically
-- To increase limits, add billing information at [https://aistudio.google.com](https://aistudio.google.com)
+- Check usage and billing in the selected provider's console.
+- Wait and retry according to that provider's rate-limit policy.
 
 ### Server starts on wrong port or old version loads
 
@@ -495,7 +510,7 @@ All Python dependencies are listed in `requirements.txt`:
 | `fastapi` | Web framework for the backend API |
 | `uvicorn[standard]` | ASGI server that runs the FastAPI app |
 | `python-multipart` | Required by FastAPI to handle file uploads |
-| `google-genai` | Official Google Generative AI SDK for Gemini API calls |
+| `litellm` | Provider-neutral SDK for hosted and local LLM calls |
 | `pypdf` | Extracts text from PDF files |
 | `python-pptx` | Extracts text from PowerPoint (.pptx) files |
 | `python-docx` | Extracts text from Word (.docx) files |

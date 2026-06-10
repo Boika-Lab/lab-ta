@@ -21,12 +21,14 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
 
 - `current-behavior.md` documents the inherited app behavior.
 - `centralized-gemini-model-configuration.md` documents server-controlled
-  Gemini model role configuration.
+  Gemini model role configuration from the earlier Gemini-only implementation.
 - `instructor-lab-index.md` documents saved-lab lookup and recovery behavior.
 - `lab-feature-availability.md` documents per-lab Quiz Generation and Socratic
   TA availability controls.
 - `llm-prompt-externalization.md` documents the externalized prompt template
   behavior.
+- `multi-provider-llm-configuration.md` documents per-lab LiteLLM models,
+  credentials, validation, and local endpoint behavior.
 - `persistent-instructor-lab-dashboard.md` documents durable unauthenticated
   instructor dashboard URLs and hydration behavior.
 - `persistent-chat-logs.md` documents opt-in anonymous chat log persistence and
@@ -41,6 +43,6 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
 
 ## Test Policy
 
-Automated tests must not call Gemini or require a real Google API key. Mock
-Gemini-facing functions and verify app behavior through public routes where
-possible.
+Automated tests must not call live LLM providers or require a real API key.
+Mock LiteLLM-facing functions and verify app behavior through public routes
+where possible.

@@ -13,9 +13,11 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 ## Instructor Configuration
 
 - `GET /` serves the instructor portal.
-- `POST /api/configure` accepts `api_key`, `lab_name`, and zero or more PDF,
+- `POST /api/configure` accepts `lab_name`, optional shared `api_key` and
+  loopback `api_base`, three LiteLLM model identifiers, and zero or more PDF,
   PPTX, or DOCX files. It also accepts optional `quiz_enabled`, `ta_enabled`,
   and `chat_logging_enabled` checkbox fields.
+- Setup validates every distinct configured model before saving the lab.
 - Uploaded documents are parsed into plain text and stored with a generated
   eight-character lab token.
 - Persistent chat logging is disabled unless the instructor explicitly enables
@@ -73,18 +75,12 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   `labs.lab_content` text value. The app does not store original document
   binaries, chunk document text, create embeddings, or perform retrieval
   augmented generation (RAG). On every TA chat request, the server reloads the
-  full stored `lab_content`, renders it into the Gemini system instruction, and
-  sends that system instruction with the current message and browser-provided
-  chat history. The lab content is not only injected at the beginning of a
-  browser chat session.
-- Gemini API context caching documentation states that implicit caching is
-  enabled by default for Gemini 2.5 and newer models and can automatically pass
-  along cost savings when repeated prompt prefixes hit the cache:
-  `https://ai.google.dev/gemini-api/docs/caching`. Because Lab TA places the
-  repeated lab material in the system instruction for each request, this default
-  implicit caching can reduce repeated-context cost in a lab setting where many
-  student sessions share the same lab material. The app does not currently
-  configure explicit Gemini cached content.
+  full stored `lab_content`, renders it into the configured model's system
+  instruction, and sends that system instruction with the current message and
+  browser-provided chat history. The lab content is not only injected at the
+  beginning of a browser chat session.
+- Provider-side prompt caching may reduce repeated-context cost when supported,
+  but the app does not configure explicit cached content.
 - Excessively long uploaded documents may eventually hit context-length or cost
   limits because the full parsed text is sent as context for each TA turn. This
   is not expected to be a typical issue for the lab handouts and articles the
@@ -125,20 +121,17 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - The current prompt templates cover Socratic TA chat, prompt-injection
   screening, and prelab quiz generation.
 
-## Gemini Model Configuration
+## LLM Model Configuration
 
-- `llm_config.py` defines server-controlled Gemini model names for TA chat,
-  prompt-injection screening, and prelab quiz generation.
-- `CHAT_MODEL` and `QUIZ_MODEL` are string constants set to
-  `gemini-2.5-flash`; `SCREENING_MODEL` is set to
-  `gemini-2.5-flash-lite`.
-- `POST /api/configure` stores the configured chat model for newly created
-  labs.
-- Existing lab rows continue using their stored `model` value for TA chat.
-- The instructor landing page displays a read-only Model Settings summary with
-  the current chat, prompt-injection screening, and prelab quiz generation
-  model values.
-- The instructor UI does not provide a model picker.
+- LiteLLM dispatches TA chat, screening, and quiz generation across supported
+  hosted and local providers.
+- `llm_config.py` defines Gemini defaults using LiteLLM provider-prefixed model
+  identifiers.
+- Each lab stores immutable chat, screening, and quiz model identifiers with a
+  shared optional API key and optional loopback API base URL.
+- The instructor setup form exposes freeform model fields. The dashboard shows
+  saved values read-only and never returns the API key.
+- Existing unprefixed Gemini model values are upgraded in place.
 
 ## Prelab Quiz
 
@@ -156,8 +149,8 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Quiz and TA prompts independently receive their selected languages and custom
   instructions. Protected prompt rules explicitly prevent custom instructions
   from overriding output, consistency, Socratic, safety, or disclosure rules.
-- Quiz generation asks Gemini to verify each correct-answer label against its
-  answer text and explanation before returning JSON.
+- Quiz generation asks the configured model to verify each correct-answer label
+  against its answer text and explanation before returning JSON.
 - `GET /quiz/{quiz_id}` returns draft or published quiz details including answer
   data for instructor use.
 - `PUT /quiz/{quiz_id}` edits draft quiz questions only.
@@ -190,7 +183,7 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 
 ## Acceptance Criteria
 
-- Current public routes have deterministic tests that do not call Gemini.
+- Current public routes have deterministic tests that do not call live providers.
 - Security screening is enforced before TA generation.
 - Prompt template loading and validation have deterministic tests.
 - Quiz state transitions reject invalid operations with clear HTTP errors.
@@ -199,5 +192,5 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 ## Test Plan
 
 - Run `python -m pytest`.
-- Mock Gemini-facing chat and quiz generation functions.
+- Mock LiteLLM-facing chat and quiz generation functions.
 - Use an isolated SQLite database per test.

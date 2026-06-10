@@ -35,5 +35,6 @@ Socratic teaching assistant.
 
 - The app is intended to run on an instructor-controlled machine.
 - Tailscale Funnel is used to expose the local FastAPI server over HTTPS.
-- Google Gemini API keys are provided by instructors and stored locally in the
-  SQLite database for each lab session.
+- Instructors may provide hosted-provider credentials or use a local loopback
+  model service. Per-lab model settings and any API key are stored locally in
+  SQLite.
