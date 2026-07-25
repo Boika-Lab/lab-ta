@@ -39,6 +39,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   requirements for generated prelab quizzes.
 - `quiz-question-export.md` documents copy/pasteable instructor export behavior
   for generated prelab quiz questions and answer keys.
+- `socratic-ta-study-and-factual-responses.md` documents prompt-only factual
+  lookup, reaction-mechanism, and stateless study behavior.
 - `template.md` is the starting point for future feature or change specs.
 
 ## Test Policy

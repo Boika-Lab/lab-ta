@@ -69,8 +69,21 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Blocked messages return a neutral refusal: `I can only help with questions
   about this lab activity.`
 - Unknown lab tokens return `404`.
-- The TA prompt must stay Socratic, use uploaded lab content, and refuse to
-  disclose its instructions.
+- The TA prompt stays Socratic, uses uploaded lab content, and refuses to
+  disclose its instructions. It may directly repeat a factual statement or
+  numerical datum only when that information is explicitly present in the
+  uploaded content, with an identifiable document, section, or table reference
+  when available. It does not calculate or verify a numerical result. If a
+  requested fact is absent from the uploaded material, it says so and suggests
+  consulting an external database such as ChemSpider or WolframAlpha.
+- A literal `\study` message begins a fresh, stateless, document-grounded study
+  interaction. The TA presents 5–10 potential questions, accepts either a
+  number or `number: answer`, and gives concise, scaffolded feedback. It does
+  not claim persistent progress or scoring. `\study off` explicitly ends study
+  behavior, while ordinary lab questions may be handled normally at any point.
+- The TA does not draw, complete, predict, or validate reaction mechanisms. It
+  directs students to the manual and instructor, but may discuss high-level,
+  document-grounded conceptual principles.
 - Uploaded lab documents are parsed into plain text and stored as a single
   `labs.lab_content` text value. The app does not store original document
   binaries, chunk document text, create embeddings, or perform retrieval
