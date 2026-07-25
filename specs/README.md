@@ -37,6 +37,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   configuration and per-generation quiz settings.
 - `quiz-answer-consistency.md` documents answer-label consistency prompt
   requirements for generated prelab quizzes.
+- `quiz-generation-content-balance.md` documents prompt-only category balance
+  and numerical-distractor requirements for generated prelab quizzes.
 - `quiz-question-export.md` documents copy/pasteable instructor export behavior
   for generated prelab quiz questions and answer keys.
 - `template.md` is the starting point for future feature or change specs.

@@ -144,6 +144,11 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - Quiz operations return `403` when quiz generation is disabled for the owning
   lab. Existing quiz data is preserved while disabled.
 - The requested question count must be between 3 and 10.
+- Quiz-generation prompt categories are mutually exclusive. Quizzes with 3–7
+  questions contain one handout-supported safety question and one
+  key-definition question; quizzes with 8–10 contain two of each; the remaining
+  questions cover general procedure. Answer choices do not differ solely by
+  numerical values or small numerical variations.
 - Generated quiz questions are stored with choices A-D, a correct answer, an
   explanation, and initial anonymous stats.
 - Quiz and TA prompts independently receive their selected languages and custom
