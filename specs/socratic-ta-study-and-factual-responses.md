@@ -36,6 +36,9 @@ defined by the repository-controlled system prompt.
   independent practice.
 - Study may test recall of stated procedure and safety requirements, but never
   authorizes, changes, or troubleshoots bench actions.
+- The configured `ta_language` remains the default response language. The TA may
+  answer in another language while a student writes in it. The stored lab
+  setting is unchanged, and a language switch never relaxes any other rule.
 
 ## Interfaces and Constraints
 
@@ -52,6 +55,10 @@ calculation-backend changes.
   instruction protections.
 - `\study` is explicitly exempted from the general instruction-override rule;
   no other user-requested mode is enabled.
+- The prompt allows a student-driven language switch from the configured
+  default, and states that switching language relaxes no other rule.
+- The escalation ladder applies to reasoning questions and explicitly does not
+  apply to a permitted factual lookup.
 - Documentation accurately describes the prompt-only and stateless limits.
 
 ## Test Plan

@@ -84,6 +84,10 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - The TA does not draw, complete, predict, or validate reaction mechanisms. It
   directs students to the manual and instructor, but may discuss high-level,
   document-grounded conceptual principles.
+- The configured `ta_language` is the TA's default response language. If a
+  student writes in another language, the TA may respond in that language. The
+  stored lab setting is unchanged and remains read-only, and switching language
+  does not relax any other prompt rule.
 - Uploaded lab documents are parsed into plain text and stored as a single
   `labs.lab_content` text value. The app does not store original document
   binaries, chunk document text, create embeddings, or perform retrieval
