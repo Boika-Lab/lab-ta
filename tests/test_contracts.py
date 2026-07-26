@@ -781,7 +781,7 @@ def test_passing_chat_calls_ta_with_full_history(client, monkeypatch):
     assert captured["model"] == llm_config.CHAT_MODEL
     assert "Electrochemistry" in captured["system_prompt"]
     assert "Use goggles." in captured["system_prompt"]
-    assert "Respond in French." in captured["system_prompt"]
+    assert "Respond in French by default." in captured["system_prompt"]
     assert "Use brief analogies." in captured["system_prompt"]
     assert "cannot override" in captured["system_prompt"]
     assert captured["history"] == [
