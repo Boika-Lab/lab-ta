@@ -37,6 +37,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   configuration and per-generation quiz settings.
 - `quiz-answer-consistency.md` documents answer-label consistency prompt
   requirements for generated prelab quizzes.
+- `quiz-completion-feedback.md` documents the green/yellow/red quiz panel
+  background feedback shown at the end of each student quiz round.
 - `quiz-generation-content-balance.md` documents prompt-only category balance
   and numerical-distractor requirements for generated prelab quizzes.
 - `quiz-question-export.md` documents copy/pasteable instructor export behavior
