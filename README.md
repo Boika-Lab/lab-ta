@@ -31,23 +31,49 @@ Instructors can also reopen past lab sessions from the saved-labs index at
 ## How It Works
 
 ```
-Instructor                          Students
-─────────                          ────────
-Opens the app  ──►  Fills in:       Open the student URL in Chrome
-                    • Provider API (phone, tablet, or laptop)
-                      key/model          │
-                    • Lab name           │
-                    • Lab files          ▼
-                    (PDF/PPTX/DOCX)  Chat with the TA by typing
-                         │           or speaking
+Instructor                           Students
+─────────                            ────────
+Opens the app  ──►  Fills in:        Open the student URL in Chrome
+                    • Provider API   (phone, tablet, or laptop)
+                      key/models           │
+                    • Lab name             │
+                    • Lab files            ▼
+                    (PDF/PPTX/DOCX)  Take the prelab quiz, if one
+                         │           is published
+                         ▼                 │
+               Gets a unique student       │
+               URL + QR code to share,     ▼
+               plus an instructor URL  Chat with the TA by typing
+               to reopen the dashboard or speaking
+                         │
                          ▼
-               Gets a unique student
-               URL + QR code to share,
-               plus an instructor URL
-               to reopen the dashboard
+               Optionally generates,
+               edits, and publishes a
+               prelab quiz built from
+               the uploaded documents
 ```
 
 Each lab session is independent — you can run multiple labs at the same time (e.g. for different lab sections or different experiments). Students never see the API key or the raw lab documents.
+
+### The Prelab Quiz
+
+Alongside the Socratic TA, each lab can carry a **prelab quiz** generated from the same uploaded documents. Its purpose is to confirm that students actually read the lab manual before they start work at the bench.
+
+**For the instructor:**
+
+- Generate a quiz of **3 to 10 multiple-choice questions** from the uploaded lab content, choosing the education level, difficulty, and quiz language. Optional custom instructions apply only to that one generation.
+- Questions are balanced by category: quizzes of 3–7 questions include one safety question and one key-definition question, and quizzes of 8–10 include two of each. All remaining questions cover general lab procedure.
+- The generated quiz arrives as an editable **draft**. Review and correct any question, choice, correct answer, or explanation, then **publish** it. Only one published quiz can be active per lab at a time, and a published quiz can be closed later.
+- Export the questions and answer key as copy/pasteable text for your own records or your course management system.
+- View **anonymous per-question statistics** — attempt counts and correct-answer counts — to see which concepts the class struggled with.
+
+**For the student:**
+
+- Every question must be answered correctly to pass. Missed questions are retried in further rounds, with an explanation shown for each incorrect answer.
+- The quiz panel background signals how the round went: **green** for no missed questions, **yellow** for exactly one, **red** for more than one.
+- When both features are enabled for a lab, passing the quiz is what unlocks the TA chat.
+
+Quiz generation and the Socratic TA are independent, and either can be switched off per lab. A lab can therefore be quiz-only, chat-only, both, or neither.
 
 ---
 
@@ -136,8 +162,13 @@ are immutable afterward.
 
 Before you begin, make sure the following are in place on the **server machine** (the desktop or laptop that will run the app):
 
-- **Operating system:** Ubuntu 24 desktop (other Linux versions likely work too)
-- **Python 3.9 or newer** — check with `python3 --version`
+- **Operating system:** Ubuntu 24 desktop or macOS (other Linux versions likely
+  work too). The app itself is platform-independent; the only differences are
+  how Tailscale is installed and a Linux-only troubleshooting step, both noted
+  where they apply.
+- **Python 3.9 or newer** — check with `python3 --version`. macOS ships with a
+  system Python; if `python3` is missing, install it from
+  [python.org](https://www.python.org/downloads/) or with Homebrew.
 - Credentials for the selected hosted provider, or a local LiteLLM-compatible
   service such as Ollama
 - **Tailscale** installed on the server machine
@@ -397,7 +428,9 @@ Lab TA uses a pragmatic specification-driven development workflow:
 1. Update or add a Markdown spec in `specs/` for behavior changes.
 2. Add or update automated tests for the spec acceptance criteria.
 3. Implement the smallest change that satisfies the spec.
-4. Run `python -m pytest` before handing off or merging.
+4. Run `./venv/bin/python -m pytest` before handing off or merging. Use the
+   project virtual environment — the system Python does not have the
+   dependencies installed and fails at collection with import errors.
 
 LiteLLM calls must be mocked in automated tests. Tests should exercise public
 routes and use isolated local data.
@@ -406,7 +439,9 @@ routes and use isolated local data.
 
 ## Tailscale Setup (First Time)
 
-If Tailscale is not yet installed on the server machine, run these commands once:
+If Tailscale is not yet installed on the server machine, set it up once.
+
+**On Linux:**
 
 ```bash
 # Install Tailscale
@@ -415,6 +450,12 @@ curl -fsSL https://tailscale.com/install.sh | sh
 # Connect to the Tailscale network
 sudo tailscale up
 ```
+
+**On macOS:** install the Tailscale app from
+[tailscale.com/download](https://tailscale.com/download) (or the Mac App Store),
+open it, and sign in. Once the app is running and signed in, the `tailscale`
+command is available in the terminal and the rest of this guide applies
+unchanged.
 
 After running `tailscale up`, Tailscale will print a URL in the terminal. Open that URL in a browser and log in (or create a free account) to authenticate the machine.
 
@@ -443,7 +484,7 @@ sudo tailscale funnel 8000
 - Run `tailscale status` in a third terminal to verify the machine is connected to the Tailscale network.
 - Try restarting Tailscale Funnel: press `Ctrl+C` in Terminal 2 and run `sudo tailscale funnel 8000` again.
 
-### Tailscale won't start ("device or resource busy")
+### Tailscale won't start ("device or resource busy") — Linux only
 
 If `sudo tailscale up` gives an error about `tailscale0` being busy or a daemon not running, a previous Tailscale process may be holding the network device open. Fix with:
 
@@ -453,6 +494,9 @@ sudo kill -9 <PID from above output>
 sudo systemctl restart tailscaled
 sudo tailscale up
 ```
+
+On macOS there is no `tailscale0` device to release — quit the Tailscale app
+from the menu bar and reopen it instead.
 
 ### 500 error in the chat
 
