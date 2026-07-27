@@ -46,9 +46,12 @@ Verify a prompt edit by importing the loader, not by eyeballing the Markdown:
 
 ### Editing prompt files
 
+- **One sentence per line.** Prompt files are not hard-wrapped to a column
+  limit. Start each sentence on its own line and let the editor soft-wrap it.
+  Git diffs line by line, so this keeps an edit to one sentence from touching
+  its neighbours, and keeps the changed line short enough to read in a diff.
 - **Do not reflow lines you are not changing.** Rewrapping a whole file turns a
-  three-line semantic change into an unreviewable diff. Match the wrapping
-  already present in the file you are editing.
+  three-line semantic change into an unreviewable diff.
 - Keep one numbered rule per list item, and keep the numbering contiguous.
 - When you renumber rules, check for cross-references — several rules refer to
   each other by number ("the sequence in rule 4", "permitted by rule 1"), and
