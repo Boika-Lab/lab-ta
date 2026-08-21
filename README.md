@@ -1,7 +1,7 @@
 # Lab TA
 
 A Socratic teaching assistant for university lab courses, powered through
-LiteLLM with Gemini 2.5 Flash defaults and support for hosted or local models.
+LiteLLM with Google Gemini defaults and support for hosted or local models.
 
 Instructors upload their lab materials once and get a shareable link with a QR code. Students open that link on any device to chat with the TA — by text or voice. The TA never gives direct answers; it guides students toward understanding through questions and hints, using only the content from the uploaded lab documents.
 
