@@ -149,8 +149,9 @@ only server-side; students never receive it. Local providers may omit the key.
 **Per-lab LLM models**
 
 The setup form accepts LiteLLM model identifiers for TA chat, screening, and
-quiz generation. Defaults are `gemini/gemini-2.5-flash` and
-`gemini/gemini-2.5-flash-lite`. The three roles share one optional API key and
+quiz generation. Defaults are `gemini/gemini-3.5-flash-lite` for chat and quiz
+generation and `gemini/gemini-2.5-flash-lite` for screening, which remains the
+cheaper option for that role. The three roles share one optional API key and
 optional API base URL. Custom base URLs are restricted to loopback addresses to
 prevent unauthenticated setup requests from reaching arbitrary network targets.
 Every distinct model is validated before the lab is saved, and these settings
@@ -272,7 +273,7 @@ instructor dashboard and student URL.
 | Field | What to enter |
 |-------|--------------|
 | **Provider API Key** | Optional shared credential for the selected hosted provider. Local providers may leave it blank. |
-| **TA Chat Model** | LiteLLM model identifier used for Socratic responses, such as `gemini/gemini-2.5-flash` or `ollama/llama3.1`. |
+| **TA Chat Model** | LiteLLM model identifier used for Socratic responses, such as `gemini/gemini-3.5-flash-lite` or `ollama/llama3.1`. |
 | **Screening Model** | Model used for prompt-injection screening. |
 | **Quiz Model** | Model used for prelab quiz generation. |
 | **Local API Base URL** | Optional loopback HTTP(S) URL such as `http://localhost:11434`; remote custom URLs are rejected. |

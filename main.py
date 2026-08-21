@@ -42,15 +42,15 @@ def get_db() -> sqlite3.Connection:
 
 def init_db() -> None:
     with get_db() as conn:
-        conn.execute("""
+        conn.execute(f"""
             CREATE TABLE IF NOT EXISTS labs (
                 token      TEXT PRIMARY KEY,
                 lab_name   TEXT,
                 lab_content TEXT,
                 api_key    TEXT,
                 model      TEXT,
-                screening_model TEXT NOT NULL DEFAULT 'gemini/gemini-2.5-flash-lite',
-                quiz_model TEXT NOT NULL DEFAULT 'gemini/gemini-2.5-flash',
+                screening_model TEXT NOT NULL DEFAULT '{llm_config.SCREENING_MODEL}',
+                quiz_model TEXT NOT NULL DEFAULT '{llm_config.QUIZ_MODEL}',
                 api_base TEXT NULL,
                 created_at TIMESTAMP,
                 chat_logging_enabled INTEGER NOT NULL DEFAULT 0,

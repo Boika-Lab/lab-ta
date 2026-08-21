@@ -178,6 +178,22 @@ def test_configure_stores_configured_chat_model(client):
     assert row["model"] == llm_config.CHAT_MODEL
 
 
+def test_default_model_identifiers():
+    assert llm_config.CHAT_MODEL == "gemini/gemini-3.5-flash-lite"
+    assert llm_config.QUIZ_MODEL == "gemini/gemini-3.5-flash-lite"
+    assert llm_config.SCREENING_MODEL == "gemini/gemini-2.5-flash-lite"
+
+
+def test_labs_table_model_defaults_come_from_llm_config():
+    with main.get_db() as conn:
+        schema = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'labs'"
+        ).fetchone()["sql"]
+
+    assert f"DEFAULT '{llm_config.SCREENING_MODEL}'" in schema
+    assert f"DEFAULT '{llm_config.QUIZ_MODEL}'" in schema
+
+
 def test_configure_stores_explicit_multi_provider_settings(client, monkeypatch):
     captured = {}
 
@@ -448,7 +464,9 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
     assert "screening_model" in columns
     assert "quiz_model" in columns
     assert "api_base" in columns
-    assert row["model"] == llm_config.CHAT_MODEL
+    # The prefix migration prepends `gemini/` to an existing model rather than
+    # replacing it with the current default, so this is the legacy value fixed up.
+    assert row["model"] == "gemini/gemini-2.5-flash"
     assert row["screening_model"] == llm_config.SCREENING_MODEL
     assert row["quiz_model"] == llm_config.QUIZ_MODEL
     assert row["api_base"] is None

@@ -143,7 +143,9 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - LiteLLM dispatches TA chat, screening, and quiz generation across supported
   hosted and local providers.
 - `llm_config.py` defines Gemini defaults using LiteLLM provider-prefixed model
-  identifiers.
+  identifiers: `gemini/gemini-3.5-flash-lite` for chat and quiz generation, and
+  `gemini/gemini-2.5-flash-lite` for screening. The `labs` table's model column
+  defaults are interpolated from these values rather than hardcoded separately.
 - Each lab stores immutable chat, screening, and quiz model identifiers with a
   shared optional API key and optional loopback API base URL.
 - The instructor setup form exposes freeform model fields. The dashboard shows
