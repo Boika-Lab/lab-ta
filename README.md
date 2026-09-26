@@ -184,8 +184,9 @@ Before you begin, make sure the following are in place on the **server machine**
   work too). The app itself is platform-independent; the only differences are
   how Tailscale is installed and a Linux-only troubleshooting step, both noted
   where they apply.
-- **Python 3.9 or newer** — check with `python3 --version`. macOS ships with a
-  system Python; if `python3` is missing, install it from
+- **Python 3.11 or newer** — check with `python3 --version`. The app is tested
+  on 3.11 and 3.12. macOS ships with a system Python that may be older; if so,
+  install a current version from
   [python.org](https://www.python.org/downloads/) or with Homebrew.
 - Credentials for the selected hosted provider, or a local LiteLLM-compatible
   service such as Ollama
@@ -559,19 +560,11 @@ instructor URL was shared or leaked. There is no way to revoke it: create a new
 lab (which gets new student and instructor links), publish the quiz there, and
 share the new student link.
 
-### Server starts on wrong port or old version loads
+### Server starts on the wrong port
 
-Make sure you are running the FastAPI server, not an old Streamlit version:
-
-```bash
-# Correct command:
-venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
-
-# Do NOT run (Streamlit version is obsolete and has been removed):
-# streamlit run app.py
-```
-
-The app runs on **port 8000**, not 8501. If something else is already using port 8000, stop it first or change the port in the uvicorn command (and update the Tailscale Funnel command to match).
+The app runs on **port 8000**. If something else is already using port 8000,
+stop it first or change the port in the uvicorn command (and update the
+Tailscale Funnel command to match).
 
 ### Math equations showing as raw LaTeX (`$E^\circ_{cell}$`)
 
@@ -602,6 +595,8 @@ All Python dependencies are listed in `requirements.txt`:
 | `pypdf` | Extracts text from PDF files |
 | `python-pptx` | Extracts text from PowerPoint (.pptx) files |
 | `python-docx` | Extracts text from Word (.docx) files |
+| `pytest` | Test runner (development only) |
+| `httpx2` | HTTP client used by the FastAPI test client (development only) |
 
 Install all of them at once with:
 

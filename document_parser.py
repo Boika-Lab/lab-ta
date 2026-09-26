@@ -50,12 +50,3 @@ def parse_uploaded_file(name: str, file_bytes: bytes) -> str:
         return parse_docx(file_bytes)
     else:
         raise ValueError(f"Unsupported file type: {suffix}")
-
-
-def parse_all_files(uploaded_files) -> str:
-    """Accept a list of Streamlit UploadedFile objects and return combined text."""
-    parts = []
-    for f in uploaded_files:
-        text = parse_uploaded_file(f.name, f.read())
-        parts.append(f"=== {f.name} ===\n{text}")
-    return "\n\n".join(parts)

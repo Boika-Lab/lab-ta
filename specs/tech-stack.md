@@ -5,7 +5,7 @@ not a target architecture.
 
 ## Runtime
 
-- Python 3.9 or newer.
+- Python 3.11 or newer. Tested on 3.11 and 3.12.
 - FastAPI backend served by Uvicorn on port `8000`.
 - SQLite database stored as `lab_ta.db` by default.
 - Optional `LAB_TA_DB_PATH` environment variable for overriding the database
@@ -63,7 +63,8 @@ not a target architecture.
 - `pypdf`
 - `python-pptx`
 - `python-docx`
-- `pytest`
+- `pytest` (tests only)
+- `httpx2` (tests only; the FastAPI test client's HTTP backend)
 
 ## Testing
 
