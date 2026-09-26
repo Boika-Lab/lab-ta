@@ -66,6 +66,8 @@ future feature areas.
   and the passphrase-protected saved-labs index.
 - Completed Local QR Code Generation spec, replacing the third-party QR image
   service with a server-side `segno` route.
+- Completed Instructor Token Rotation spec: a dashboard action that replaces
+  the instructor token in place and revokes the old instructor URL.
 - Completed Quiz Completion Feedback spec.
 - Completed Optional Persistent Chat Logs spec, including SQLite upgrade
   behavior, route contracts, and template wiring tests.
@@ -92,8 +94,8 @@ future feature areas.
 - The app stores API keys locally in SQLite in plaintext.
 - There is no user login or role-based authentication. Access is link-based:
   the student link and a separate private instructor link per lab.
-- Anyone with an instructor dashboard URL can manage that lab, and a leaked
-  instructor URL cannot be revoked without recreating the lab.
+- Anyone with an instructor dashboard URL can manage that lab. A leaked URL
+  is revoked by rotating the instructor token from the dashboard.
 - The saved-labs index requires the `LAB_TA_ADMIN_PASSPHRASE` passphrase; when
   it is unset the index is disabled.
 - The instructor and student pages are plain HTML/CSS/JavaScript templates.
@@ -127,7 +129,7 @@ link cannot reach the dashboard, answer key, chat logs, or quiz controls.
 #### Non-Goals
 
 - No user accounts, sessions, or cookies.
-- No revocation or rotation of instructor tokens.
+- Rotation was added later by the Instructor Token Rotation spec.
 
 ### Multi-Provider LLM Configuration
 
@@ -389,17 +391,13 @@ navigation but has no way to remove obsolete or sensitive sessions.
 - No deletion from the per-lab dashboard in the first version.
 - No authentication or access-control change.
 
-### Instructor Token Rotation and Stronger Authentication
+### Stronger Instructor Authentication
 
-The Instructor Access Control item settled on separate per-lab instructor
-tokens plus a passphrase for the saved-labs index. Remaining questions for a
-later spec:
-
-- Should instructors be able to rotate or revoke a leaked instructor token
-  without recreating the lab?
-- Should the index passphrase also gate a future deletion API?
-- Is a login-based model (shared passphrase for all dashboards, OAuth, or user
-  accounts) worth the added classroom friction?
+The Instructor Access Control and Instructor Token Rotation items settled on
+separate, rotatable per-lab instructor tokens plus a passphrase for the
+saved-labs index. The remaining question for a later spec is whether a
+login-based model (a shared passphrase for all dashboards, OAuth, or user
+accounts) is worth the added classroom friction.
 
 ### LiteLLM Provider Support
 

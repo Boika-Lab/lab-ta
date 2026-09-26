@@ -577,6 +577,13 @@
           This dashboard URL is your private management link. Bookmark it, and do not share it with students:
           anyone who has it can read chat logs and the quiz answer key, publish or close quizzes, and change feature availability.
         </p>
+        <div class="btn-row" style="margin-top:0.5rem;">
+          <button class="btn-secondary" id="rotate-link-btn" onclick="rotateInstructorLink()">Rotate Instructor Link</button>
+        </div>
+        <p class="hint-text" style="margin-top:0.5rem;border-top:none;padding-top:0;">
+          If this link may have been seen by a student, rotate it. The old link stops working immediately;
+          the student link, quiz, statistics, and chat logs are kept.
+        </p>
       </div>
 
       <div class="logs-panel" id="feature-availability-panel">
@@ -1015,6 +1022,22 @@
 
     function openLink() {
       window.open(studentUrl, '_blank');
+    }
+
+    async function rotateInstructorLink() {
+      if (!instructorToken) return;
+      if (!confirm('Rotate the instructor link? The current dashboard URL will stop working immediately. Update your bookmark afterwards.')) return;
+      const btn = document.getElementById('rotate-link-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${instructorApi()}/rotate`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+        window.location.replace(data.instructor_url);
+      } catch (err) {
+        btn.disabled = false;
+        alert('Error rotating the instructor link: ' + err.message);
+      }
     }
 
     async function loadChatLogs() {

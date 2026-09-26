@@ -57,8 +57,13 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   instructor token, chat logging status, creation timestamp, quiz count/status
   summary, and chat log exchange count.
 - Saved-lab API rows exclude API keys and raw uploaded lab document content.
-- Anyone who holds an instructor URL can manage that lab. A leaked instructor
-  URL cannot be revoked short of recreating the lab.
+- Anyone who holds an instructor URL can manage that lab.
+- `POST /api/instructor/lab/{instructor_token}/rotate` replaces the lab's
+  instructor token and returns the student token, the new instructor token,
+  and the new instructor URL. The old instructor URL returns `404` from then
+  on; the student link, quizzes, statistics, and chat logs are unchanged. The
+  dashboard's Private Instructor Link panel has a Rotate Instructor Link
+  button that confirms, calls the route, and navigates to the new URL.
 - The instructor dashboard result panel includes chat log controls. Refresh
   loads the current JSON-backed log view from
   `GET /api/instructor/lab/{instructor_token}/chat-logs`, and Download JSON

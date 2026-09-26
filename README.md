@@ -148,9 +148,10 @@ returns `404`. No student-facing route returns the answer key or the
 instructor URL.
 
 There are no accounts or passwords for individual labs. Whoever holds an
-instructor URL can manage that lab, and a leaked instructor URL cannot be
-revoked without recreating the lab. Bookmark it and do not share it with
-students.
+instructor URL can manage that lab. Bookmark it and do not share it with
+students. If you think it has been seen, click **Rotate Instructor Link** on
+the dashboard: the old URL stops working immediately and the student link,
+quiz, statistics, and chat logs are kept.
 
 The saved-labs index at `/instructor/labs` lists every lab with its instructor
 link, so it is protected by a passphrase that you set in the
@@ -557,9 +558,9 @@ value you exported; it is compared exactly, including spaces.
 ### Student can open the instructor dashboard
 
 They cannot from the student link alone. If a student has the dashboard, the
-instructor URL was shared or leaked. There is no way to revoke it: create a new
-lab (which gets new student and instructor links), publish the quiz there, and
-share the new student link.
+instructor URL was shared or leaked. Open the dashboard yourself and click
+**Rotate Instructor Link**. The leaked URL stops working, and nothing about the
+lab changes for students.
 
 ### Server starts on the wrong port
 

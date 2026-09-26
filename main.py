@@ -743,6 +743,28 @@ async def get_instructor_lab(instructor_token: str):
     }
 
 
+@app.post("/api/instructor/lab/{instructor_token}/rotate")
+async def rotate_instructor_token(instructor_token: str):
+    """Replace the lab's instructor token so a leaked instructor URL stops working."""
+    with get_db() as conn:
+        token = require_instructor_lab(conn, instructor_token)["token"]
+        new_token = generate_instructor_token()
+        while conn.execute(
+            "SELECT 1 FROM labs WHERE instructor_token = ?", (new_token,)
+        ).fetchone():
+            new_token = generate_instructor_token()
+        conn.execute(
+            "UPDATE labs SET instructor_token = ? WHERE token = ?",
+            (new_token, token),
+        )
+        conn.commit()
+    return {
+        "token": token,
+        "instructor_token": new_token,
+        "instructor_url": f"/instructor/{new_token}",
+    }
+
+
 @app.get("/api/instructor/lab/{instructor_token}/qr.svg")
 async def instructor_qr_code(
     instructor_token: str, student_url: str = Query(default="")

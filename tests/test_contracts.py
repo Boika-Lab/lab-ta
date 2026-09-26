@@ -1830,3 +1830,68 @@ def test_instructor_template_requests_qr_code_from_local_route():
         "`${instructorApi()}/qr.svg?student_url=${encodeURIComponent(studentUrl)}`"
         in template
     )
+
+
+def test_rotate_instructor_token_revokes_old_link_and_keeps_lab_data(client, monkeypatch):
+    token = insert_lab(chat_logging_enabled=True)
+    old = itoken(token)
+
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[4])
+
+    monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
+    quiz_id = client.post(f"{iapi(token)}/quiz/generate", json=quiz_payload(token)).json()["quiz_id"]
+    assert client.post(f"{iapi(token)}/quiz/{quiz_id}/publish").status_code == 200
+    main.persist_chat_log(token, "session-a", "Q?", "A.", False)
+
+    rotated = client.post(f"{iapi(token)}/rotate")
+    assert rotated.status_code == 200
+    body = rotated.json()
+    new = body["instructor_token"]
+    assert body["token"] == token
+    assert new != old
+    assert len(new) >= 32
+    assert body["instructor_url"] == f"/instructor/{new}"
+
+    old_prefix = f"/api/instructor/lab/{old}"
+    assert client.get(f"/instructor/{old}").status_code == 404
+    assert client.get(old_prefix).status_code == 404
+    assert client.get(f"{old_prefix}/chat-logs").status_code == 404
+    assert client.get(f"{old_prefix}/quiz/{quiz_id}").status_code == 404
+    assert client.post(f"{old_prefix}/rotate").status_code == 404
+
+    new_prefix = f"/api/instructor/lab/{new}"
+    assert client.get(f"/instructor/{new}").status_code == 200
+    hydrated = client.get(new_prefix).json()
+    assert hydrated["token"] == token
+    assert hydrated["instructor_token"] == new
+    assert hydrated["active_quiz"]["quiz_id"] == quiz_id
+    assert client.get(f"{new_prefix}/quiz/{quiz_id}").status_code == 200
+    logs = client.get(f"{new_prefix}/chat-logs").json()
+    assert logs["sessions"][0]["exchanges"][0]["question"] == "Q?"
+
+    # Student side is untouched.
+    assert client.get(f"/api/lab/{token}").status_code == 200
+    assert client.get(f"/quiz/active/{token}").json()["quiz_id"] == quiz_id
+
+
+def test_rotate_instructor_token_rejects_student_and_unknown_tokens(client):
+    token = insert_lab()
+    assert client.post(f"/api/instructor/lab/{token}/rotate").status_code == 404
+    assert client.post("/api/instructor/lab/missing/rotate").status_code == 404
+    with main.get_db() as conn:
+        stored = conn.execute(
+            "SELECT instructor_token FROM labs WHERE token = ?", (token,)
+        ).fetchone()["instructor_token"]
+    assert stored == itoken(token)
+
+
+def test_instructor_dashboard_rotate_link_hooks_exist():
+    template = Path("templates/instructor.html").read_text()
+
+    assert 'id="rotate-link-btn"' in template
+    assert "Rotate Instructor Link" in template
+    assert "async function rotateInstructorLink()" in template
+    assert "if (!confirm('Rotate the instructor link?" in template
+    assert "fetch(`${instructorApi()}/rotate`, { method: 'POST' })" in template
+    assert "window.location.replace(data.instructor_url)" in template
