@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 import secrets
@@ -13,8 +14,9 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+import segno
+from fastapi import FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 
 from document_parser import parse_uploaded_file
@@ -739,6 +741,44 @@ async def get_instructor_lab(instructor_token: str):
         "ta_custom_instructions": lab["ta_custom_instructions"],
         "active_quiz": active_quiz,
     }
+
+
+@app.get("/api/instructor/lab/{instructor_token}/qr.svg")
+async def instructor_qr_code(
+    instructor_token: str, student_url: str = Query(default="")
+):
+    """Render the student-link QR code locally so the URL never leaves the server.
+
+    The browser supplies the absolute student URL it displays (the server cannot
+    reliably know the public Tailscale origin). Only this lab's own student link
+    is accepted, so the route is not a general-purpose QR generator.
+    """
+    with get_db() as conn:
+        token = require_instructor_lab(conn, instructor_token)["token"]
+    try:
+        parsed = urlsplit(student_url.strip())
+    except ValueError:
+        parsed = None
+    if (
+        parsed is None
+        or parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.query
+        or parsed.fragment
+        or parsed.path != f"/lab/{token}"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="student_url must be this lab's own student link",
+        )
+    qr = segno.make(student_url.strip(), error="m")
+    buf = io.BytesIO()
+    qr.save(buf, kind="svg", scale=6, border=2, xmldecl=True, svgclass=None, lineclass=None)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.patch("/api/instructor/lab/{instructor_token}/features")

@@ -21,7 +21,8 @@ future feature areas.
   instructions.
 - Passphrase-protected saved-labs index at `/instructor/labs` with lookup data
   from `GET /api/instructor/labs` (requires `LAB_TA_ADMIN_PASSPHRASE`).
-- QR code display and copy/open-link controls for student access.
+- Server-generated QR code (via `segno`) plus copy/open-link controls for
+  student access; the student URL is not sent to any third-party service.
 - Student lab page served at `GET /lab/{token}`.
 - Lab metadata lookup through `GET /api/lab/{token}`.
 - Socratic chat through `POST /api/chat/{token}`.
@@ -63,6 +64,8 @@ future feature areas.
 - Completed Instructor Access Control spec, including separate instructor
   tokens, instructor-only quiz and chat-log routes, secure token generation,
   and the passphrase-protected saved-labs index.
+- Completed Local QR Code Generation spec, replacing the third-party QR image
+  service with a server-side `segno` route.
 - Completed Quiz Completion Feedback spec.
 - Completed Optional Persistent Chat Logs spec, including SQLite upgrade
   behavior, route contracts, and template wiring tests.

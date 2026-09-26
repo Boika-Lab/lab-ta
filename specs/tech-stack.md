@@ -24,6 +24,8 @@ not a target architecture.
 - `ta_engine.py`: Socratic prompt rendering and provider-neutral chat calls.
 - `quiz_engine.py`: provider-neutral multiple-choice prelab quiz generation.
 - `document_parser.py`: Text extraction from uploaded PDF, PPTX, and DOCX files.
+- QR codes for student links are rendered server-side as SVG with `segno`
+  through `GET /api/instructor/lab/{instructor_token}/qr.svg`.
 
 ## Frontend
 
@@ -51,8 +53,6 @@ not a target architecture.
   lab.
 - Tailscale Funnel for public HTTPS access to the local server.
 - MathJax loaded from a CDN for mathematical and chemical notation rendering.
-- QR code image generation is currently loaded from a third-party QR service in
-  the instructor page.
 
 ## Dependencies
 
@@ -63,6 +63,7 @@ not a target architecture.
 - `pypdf`
 - `python-pptx`
 - `python-docx`
+- `segno` (pure-Python QR code generation)
 - `pytest` (tests only)
 - `httpx2` (tests only; the FastAPI test client's HTTP backend)
 

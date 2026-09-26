@@ -841,7 +841,7 @@
       document.getElementById('student-url').textContent = studentUrl;
       document.getElementById('instructor-url').textContent = instructorUrl;
       document.getElementById('qr-img').src =
-        `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(studentUrl)}&size=200x200`;
+        `${instructorApi()}/qr.svg?student_url=${encodeURIComponent(studentUrl)}`;
       renderChatLogStatus();
       renderFeatureAvailability();
 
