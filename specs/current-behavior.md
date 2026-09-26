@@ -40,6 +40,12 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   published quiz summary when one exists.
 - The dashboard shows the instructor URL in a Private Instructor Link panel
   with a notice that it must not be shared with students.
+- `GET /api/instructor/lab/{instructor_token}/qr.svg?student_url=<absolute URL>`
+  renders the student-link QR code on the server as SVG with `segno`. The
+  browser passes the absolute student URL it displays. The route accepts only
+  an `http` or `https` URL without query or fragment whose path is exactly
+  this lab's `/lab/{token}`, returns `400` otherwise, and `404` for unknown or
+  student tokens. No third-party service receives the student URL.
 - `GET /instructor/labs` serves a saved-labs index page that asks for a
   passphrase, keeps it in `sessionStorage` for the browser session, and sends
   it in the `X-Lab-TA-Passphrase` header.

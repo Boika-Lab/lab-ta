@@ -323,7 +323,8 @@ new instructor dashboard. There you will see:
   `https://your-machine-name.tail766770.ts.net/instructor/Qm3xVt8bLw2pYk9RzC4nHs7dJf1gTe0a`.
   Bookmark it. Anyone who has it can manage the lab, so never share it with
   students.
-- A **QR code** students can scan with their phone
+- A **QR code** students can scan with their phone. It is generated on your
+  own server, so the student link is not sent to any outside service.
 - A **Copy Link** button to copy the URL to your clipboard
 - **Feature Availability** controls for editing Quiz Generation and Socratic TA
   availability later
@@ -595,6 +596,7 @@ All Python dependencies are listed in `requirements.txt`:
 | `pypdf` | Extracts text from PDF files |
 | `python-pptx` | Extracts text from PowerPoint (.pptx) files |
 | `python-docx` | Extracts text from Word (.docx) files |
+| `segno` | Generates the student-link QR code locally as SVG |
 | `pytest` | Test runner (development only) |
 | `httpx2` | HTTP client used by the FastAPI test client (development only) |
 

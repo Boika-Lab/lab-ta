@@ -32,6 +32,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   TA availability controls.
 - `llm-prompt-externalization.md` documents the externalized prompt template
   behavior.
+- `local-qr-code-generation.md` documents server-side QR code rendering for
+  student links and the validation on that route.
 - `multi-provider-llm-configuration.md` documents per-lab LiteLLM models,
   credentials, validation, and local endpoint behavior.
 - `persistent-instructor-lab-dashboard.md` documents durable unauthenticated

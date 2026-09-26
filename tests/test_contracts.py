@@ -1768,3 +1768,65 @@ def test_instructor_dashboard_private_link_hooks_exist():
     assert "fetch(`${instructorApi()}/quiz/${publishedQuizId}/close`" in template
     assert "currentToken" not in template
     assert "/api/chat-logs/" not in template
+
+
+def test_instructor_qr_code_is_generated_locally_for_own_student_url(client):
+    token = insert_lab()
+    student_url = f"https://lab-pc.tail766770.ts.net/lab/{token}"
+
+    ok = client.get(f"{iapi(token)}/qr.svg", params={"student_url": student_url})
+    assert ok.status_code == 200
+    assert ok.headers["content-type"].startswith("image/svg+xml")
+    assert ok.headers["cache-control"] == "no-store"
+    assert ok.text.lstrip().startswith("<?xml")
+    assert "<svg" in ok.text
+
+    # Any host is fine; only the path is tied to the lab.
+    local = client.get(
+        f"{iapi(token)}/qr.svg", params={"student_url": f"http://localhost:8000/lab/{token}"}
+    )
+    assert local.status_code == 200
+
+    # Student and unknown tokens cannot use the route.
+    assert client.get(
+        f"/api/instructor/lab/{token}/qr.svg", params={"student_url": student_url}
+    ).status_code == 404
+    assert client.get(
+        "/api/instructor/lab/missing/qr.svg", params={"student_url": student_url}
+    ).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "",
+        "not a url",
+        "ftp://lab-pc/lab/{token}",
+        "https://lab-pc/lab/{token}?x=1",
+        "https://lab-pc/lab/{token}#frag",
+        "https://lab-pc/lab/other999",
+        "https://lab-pc/instructor/{token}",
+        "https://lab-pc/lab/{token}/extra",
+        "/lab/{token}",
+    ],
+)
+def test_instructor_qr_code_rejects_urls_that_are_not_this_labs_student_link(
+    client, bad_url
+):
+    token = insert_lab()
+    response = client.get(
+        f"{iapi(token)}/qr.svg", params={"student_url": bad_url.format(token=token)}
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "student_url must be this lab's own student link"
+
+
+def test_instructor_template_requests_qr_code_from_local_route():
+    template = Path("templates/instructor.html").read_text()
+
+    assert "api.qrserver.com" not in template
+    assert "qrserver" not in template
+    assert (
+        "`${instructorApi()}/qr.svg?student_url=${encodeURIComponent(studentUrl)}`"
+        in template
+    )
