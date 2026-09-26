@@ -56,7 +56,15 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   token, relative student URL, relative instructor dashboard URL built from the
   instructor token, chat logging status, creation timestamp, quiz count/status
   summary, and chat log exchange count.
-- Saved-lab API rows exclude API keys and raw uploaded lab document content.
+- Saved-lab API rows include `instructor_token` and exclude API keys and raw
+  uploaded lab document content.
+- `DELETE /api/instructor/lab/{instructor_token}` with JSON body
+  `{"confirm_token": "<student token>"}` permanently deletes the lab row, its
+  chat logs, quizzes, quiz questions, and quiz statistics in one transaction.
+  A missing or wrong `confirm_token` returns `400` and deletes nothing. After
+  deletion every route for either token returns `404`. The dashboard has a
+  Delete Lab control and the saved-labs index has a Delete button per row;
+  both require typing the student token first.
 - Anyone who holds an instructor URL can manage that lab.
 - `POST /api/instructor/lab/{instructor_token}/rotate` replaces the lab's
   instructor token and returns the student token, the new instructor token,

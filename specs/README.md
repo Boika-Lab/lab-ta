@@ -20,6 +20,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
 ## Current Specs
 
 - `current-behavior.md` documents the inherited app behavior.
+- `delete-lab.md` documents permanent, confirmed deletion of a lab and all of
+  its stored data from the dashboard or the saved-labs index.
 - `centralized-gemini-model-configuration.md` documents server-controlled
   Gemini model role configuration from the earlier Gemini-only implementation.
 - `gemini-3-5-flash-lite-defaults.md` documents the default chat and quiz model
