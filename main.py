@@ -7,7 +7,7 @@ import os
 import secrets
 import sqlite3
 import string
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from typing import Optional
@@ -249,7 +249,7 @@ def persist_chat_log(
                 token,
                 normalized_session_id,
                 row["next_index"],
-                datetime.now(UTC).isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 question,
                 response,
                 1 if blocked else 0,
@@ -598,7 +598,7 @@ async def configure(
                 screening_model,
                 quiz_model,
                 normalized_api_base,
-                datetime.now(UTC).isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 1 if chat_logging_enabled else 0,
                 1 if quiz_enabled else 0,
                 1 if ta_enabled else 0,
@@ -940,7 +940,7 @@ async def quiz_generate(instructor_token: str, req: GenerateQuizRequest):
             (
                 token,
                 req.n_questions,
-                datetime.now(UTC).isoformat(),
+                datetime.now(timezone.utc).isoformat(),
                 req.education_level,
                 req.difficulty,
                 language,
