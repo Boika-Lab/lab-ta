@@ -28,6 +28,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   instructor-only routes, secure token generation, and the passphrase-protected
   saved-labs index.
 - `instructor-lab-index.md` documents saved-lab lookup and recovery behavior.
+- `instructor-token-rotation.md` documents replacing a lab's instructor token
+  in place to revoke a leaked instructor URL.
 - `lab-feature-availability.md` documents per-lab Quiz Generation and Socratic
   TA availability controls.
 - `llm-prompt-externalization.md` documents the externalized prompt template

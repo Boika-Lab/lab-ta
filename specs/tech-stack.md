@@ -85,7 +85,8 @@ not a target architecture.
   least 32 URL-safe characters stored in `labs.instructor_token`. Both tokens
   come from the `secrets` module.
 - There are no user accounts, sessions, or cookies. Holding an instructor URL
-  is what grants management access to that lab.
+  is what grants management access to that lab. The instructor token can be
+  rotated from the dashboard to revoke a leaked URL.
 
 ## Environment Variables
 
