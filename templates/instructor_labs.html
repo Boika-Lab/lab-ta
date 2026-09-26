@@ -57,6 +57,11 @@
       white-space: nowrap;
     }
 
+    .btn.danger {
+      color: #c0392b;
+      border-color: #e6b3b3;
+    }
+
     .btn.primary {
       background: #2E86AB;
       color: #fff;
@@ -249,10 +254,35 @@
           <div class="actions">
             <a class="btn primary" href="${escAttr(lab.instructor_url)}">Instructor Dashboard</a>
             <a class="btn" href="${escAttr(lab.student_url)}">Student URL</a>
+            <button class="btn danger" type="button">Delete</button>
           </div>
         `;
+        row.querySelector('.btn.danger').addEventListener('click', () => deleteLab(lab, row));
         labsList.appendChild(row);
       });
+    }
+
+    async function deleteLab(lab, row) {
+      const typed = prompt(`Permanently delete lab "${lab.lab_name}" and all of its data (quizzes, stats, chat logs)?\nType the token ${lab.token} to confirm.`);
+      if (typed === null) return;
+      if (typed.trim() !== lab.token) { alert('The token did not match. Nothing was deleted.'); return; }
+      try {
+        const res = await fetch(`/api/instructor/lab/${encodeURIComponent(lab.instructor_token)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm_token: typed.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+        row.remove();
+        if (!labsList.children.length) {
+          statusEl.className = '';
+          statusEl.textContent = 'No saved labs yet. Create a lab to see it here.';
+          statusEl.style.display = 'block';
+        }
+      } catch (err) {
+        alert('Error deleting the lab: ' + err.message);
+      }
     }
 
     async function loadSavedLabs(passphrase) {

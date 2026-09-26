@@ -585,6 +585,16 @@
           the student link, quiz, statistics, and chat logs are kept.
         </p>
       </div>
+      <div class="logs-panel" id="danger-panel" style="border:1.5px solid #f3c6c6;background:#fff8f8;">
+        <div style="font-size:1rem;font-weight:700;color:#c0392b;margin-bottom:0.5rem;">Delete Lab</div>
+        <p class="hint-text" style="margin-top:0;border-top:none;padding-top:0;">
+          Permanently deletes this lab: the student link, uploaded lab text, API key, quizzes, statistics, and chat logs.
+          There is no undo. You will be asked to type the student token (<code id="danger-token"></code>) to confirm.
+        </p>
+        <div class="btn-row" style="margin-top:0.5rem;">
+          <button class="btn-secondary" id="delete-lab-btn" onclick="deleteLab()" style="color:#c0392b;border-color:#e6b3b3;">Delete Lab</button>
+        </div>
+      </div>
 
       <div class="logs-panel" id="feature-availability-panel">
         <div style="font-size:1rem;font-weight:700;color:#1a1a2e;margin-bottom:0.85rem;">Feature Availability</div>
@@ -847,6 +857,7 @@
         `Lab "${data.lab_name}" is ready!`;
       document.getElementById('student-url').textContent = studentUrl;
       document.getElementById('instructor-url').textContent = instructorUrl;
+      document.getElementById('danger-token').textContent = studentToken;
       document.getElementById('qr-img').src =
         `${instructorApi()}/qr.svg?student_url=${encodeURIComponent(studentUrl)}`;
       renderChatLogStatus();
@@ -1022,6 +1033,28 @@
 
     function openLink() {
       window.open(studentUrl, '_blank');
+    }
+
+    async function deleteLab() {
+      if (!instructorToken) return;
+      const typed = prompt(`Permanently delete lab "${currentLabName}" and all of its data?\nType the student token ${studentToken} to confirm.`);
+      if (typed === null) return;
+      if (typed.trim() !== studentToken) { alert('The token did not match. Nothing was deleted.'); return; }
+      const btn = document.getElementById('delete-lab-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch(instructorApi(), {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm_token: typed.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Server error');
+        window.location.replace('/');
+      } catch (err) {
+        btn.disabled = false;
+        alert('Error deleting the lab: ' + err.message);
+      }
     }
 
     async function rotateInstructorLink() {

@@ -293,7 +293,9 @@ https://your-machine-name.tail766770.ts.net/instructor/labs
 The saved-labs page asks for the passphrase from `LAB_TA_ADMIN_PASSPHRASE`,
 then lists local lab sessions with clickable links to each instructor
 dashboard and student URL. The passphrase is remembered for the browser tab
-session only.
+session only. Each row also has a **Delete** button that permanently removes
+the lab and all of its data after you type its token to confirm; the same
+control is at the bottom of each lab's dashboard.
 
 ### Step 2 — Fill in the Lab Details
 

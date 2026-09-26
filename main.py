@@ -362,6 +362,10 @@ class FeatureUpdateRequest(BaseModel):
     ta_enabled: bool
 
 
+class DeleteLabRequest(BaseModel):
+    confirm_token: str = ""
+
+
 class QuestionEdit(BaseModel):
     id: int
     question: str
@@ -676,6 +680,7 @@ async def get_instructor_labs(
             {
                 "token": token,
                 "lab_name": row["lab_name"],
+                "instructor_token": row["instructor_token"],
                 "student_url": f"/lab/{token}",
                 "instructor_url": f"/instructor/{row['instructor_token']}",
                 "chat_logging_enabled": bool(row["chat_logging_enabled"]),
@@ -741,6 +746,34 @@ async def get_instructor_lab(instructor_token: str):
         "ta_custom_instructions": lab["ta_custom_instructions"],
         "active_quiz": active_quiz,
     }
+
+
+@app.delete("/api/instructor/lab/{instructor_token}")
+async def delete_lab(instructor_token: str, req: DeleteLabRequest):
+    """Permanently delete a lab and every row that depends on it."""
+    with get_db() as conn:
+        token = require_instructor_lab(conn, instructor_token)["token"]
+        if req.confirm_token.strip() != token:
+            raise HTTPException(
+                status_code=400,
+                detail="confirm_token must match this lab's student token",
+            )
+        conn.execute(
+            "DELETE FROM quiz_question_stats WHERE question_id IN ("
+            "SELECT qq.id FROM quiz_questions qq "
+            "JOIN quizzes q ON q.id = qq.quiz_id WHERE q.token = ?)",
+            (token,),
+        )
+        conn.execute(
+            "DELETE FROM quiz_questions WHERE quiz_id IN ("
+            "SELECT id FROM quizzes WHERE token = ?)",
+            (token,),
+        )
+        conn.execute("DELETE FROM quizzes WHERE token = ?", (token,))
+        conn.execute("DELETE FROM chat_logs WHERE token = ?", (token,))
+        conn.execute("DELETE FROM labs WHERE token = ?", (token,))
+        conn.commit()
+    return {"deleted": True, "token": token}
 
 
 @app.post("/api/instructor/lab/{instructor_token}/rotate")

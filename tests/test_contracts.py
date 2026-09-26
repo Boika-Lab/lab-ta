@@ -619,6 +619,7 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(
         "token": newer,
         "lab_name": "Newer Lab",
         "student_url": f"/lab/{newer}",
+        "instructor_token": itoken(newer),
         "instructor_url": f"/instructor/{itoken(newer)}",
         "chat_logging_enabled": True,
         "quiz_enabled": True,
@@ -633,6 +634,7 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(
         "token": older,
         "lab_name": "Older Lab",
         "student_url": f"/lab/{older}",
+        "instructor_token": itoken(older),
         "instructor_url": f"/instructor/{itoken(older)}",
         "chat_logging_enabled": False,
         "quiz_enabled": True,
@@ -1895,3 +1897,111 @@ def test_instructor_dashboard_rotate_link_hooks_exist():
     assert "if (!confirm('Rotate the instructor link?" in template
     assert "fetch(`${instructorApi()}/rotate`, { method: 'POST' })" in template
     assert "window.location.replace(data.instructor_url)" in template
+
+
+def _seed_lab_with_quiz_and_logs(client, monkeypatch, token: str) -> int:
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[4])
+
+    monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
+    quiz_id = client.post(f"{iapi(token)}/quiz/generate", json=quiz_payload(token)).json()["quiz_id"]
+    assert client.post(f"{iapi(token)}/quiz/{quiz_id}/publish").status_code == 200
+    main.persist_chat_log(token, "session-a", "Q?", "A.", False)
+    return quiz_id
+
+
+def _row_counts(token: str) -> dict:
+    with main.get_db() as conn:
+        return {
+            "labs": conn.execute("SELECT COUNT(*) FROM labs WHERE token = ?", (token,)).fetchone()[0],
+            "quizzes": conn.execute("SELECT COUNT(*) FROM quizzes WHERE token = ?", (token,)).fetchone()[0],
+            "questions": conn.execute(
+                "SELECT COUNT(*) FROM quiz_questions WHERE quiz_id IN (SELECT id FROM quizzes WHERE token = ?)",
+                (token,),
+            ).fetchone()[0],
+            "stats": conn.execute(
+                "SELECT COUNT(*) FROM quiz_question_stats WHERE question_id IN ("
+                "SELECT qq.id FROM quiz_questions qq JOIN quizzes q ON q.id = qq.quiz_id WHERE q.token = ?)",
+                (token,),
+            ).fetchone()[0],
+            "chat_logs": conn.execute("SELECT COUNT(*) FROM chat_logs WHERE token = ?", (token,)).fetchone()[0],
+        }
+
+
+def test_delete_lab_cascades_and_leaves_other_labs_intact(client, monkeypatch):
+    victim = insert_lab(token="victim01", chat_logging_enabled=True)
+    keeper = insert_lab(token="keeper02", chat_logging_enabled=True)
+    victim_quiz = _seed_lab_with_quiz_and_logs(client, monkeypatch, victim)
+    keeper_quiz = _seed_lab_with_quiz_and_logs(client, monkeypatch, keeper)
+    assert _row_counts(victim) == {"labs": 1, "quizzes": 1, "questions": 3, "stats": 3, "chat_logs": 1}
+
+    response = client.request(
+        "DELETE", iapi(victim), json={"confirm_token": victim}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True, "token": victim}
+    assert _row_counts(victim) == {"labs": 0, "quizzes": 0, "questions": 0, "stats": 0, "chat_logs": 0}
+    assert _row_counts(keeper) == {"labs": 1, "quizzes": 1, "questions": 3, "stats": 3, "chat_logs": 1}
+
+    # Every route for the deleted lab is gone, for both tokens.
+    assert client.get(f"/instructor/{itoken(victim)}").status_code == 404
+    assert client.get(iapi(victim)).status_code == 404
+    assert client.get(f"{iapi(victim)}/chat-logs").status_code == 404
+    assert client.get(f"{iapi(victim)}/quiz/{victim_quiz}").status_code == 404
+    assert client.get(f"/api/lab/{victim}").status_code == 404
+    assert client.post(
+        f"/api/chat/{victim}", json={"message": "hi", "history": []}
+    ).status_code == 404
+    assert client.get(f"/quiz/active/{victim}").status_code == 404
+    assert client.post(f"/quiz/{victim_quiz}/submit", json={"answers": {"1": "A"}}).status_code == 404
+
+    # The other lab still works end to end.
+    assert client.get(f"/quiz/active/{keeper}").json()["quiz_id"] == keeper_quiz
+    assert client.get(f"{iapi(keeper)}/quiz/{keeper_quiz}").status_code == 200
+
+    monkeypatch.setenv("LAB_TA_ADMIN_PASSPHRASE", "open-sesame")
+    listed = client.get("/api/instructor/labs", headers=PASSPHRASE_HEADER).json()
+    assert [lab["token"] for lab in listed] == [keeper]
+    assert listed[0]["instructor_token"] == itoken(keeper)
+
+
+def test_delete_lab_requires_matching_confirmation_and_instructor_token(client, monkeypatch):
+    token = insert_lab(chat_logging_enabled=True)
+    _seed_lab_with_quiz_and_logs(client, monkeypatch, token)
+    before = _row_counts(token)
+
+    missing = client.request("DELETE", iapi(token), json={})
+    assert missing.status_code == 400
+    wrong = client.request("DELETE", iapi(token), json={"confirm_token": "nope"})
+    assert wrong.status_code == 400
+    assert wrong.json()["detail"] == "confirm_token must match this lab's student token"
+    assert _row_counts(token) == before
+
+    assert client.request(
+        "DELETE", f"/api/instructor/lab/{token}", json={"confirm_token": token}
+    ).status_code == 404
+    assert client.request(
+        "DELETE", "/api/instructor/lab/missing", json={"confirm_token": token}
+    ).status_code == 404
+    assert _row_counts(token) == before
+
+
+def test_delete_lab_template_hooks_exist():
+    dashboard = Path("templates/instructor.html").read_text()
+    assert 'id="danger-panel"' in dashboard
+    assert 'id="delete-lab-btn"' in dashboard
+    assert "async function deleteLab()" in dashboard
+    assert "Type the student token ${studentToken} to confirm." in dashboard
+    assert "if (typed.trim() !== studentToken)" in dashboard
+    assert "fetch(instructorApi(), {\n          method: 'DELETE'" in dashboard
+    assert "body: JSON.stringify({ confirm_token: typed.trim() })" in dashboard
+    assert "window.location.replace('/')" in dashboard
+
+    index = Path("templates/instructor_labs.html").read_text()
+    assert 'class="btn danger" type="button">Delete</button>' in index
+    assert "async function deleteLab(lab, row)" in index
+    assert "Type the token ${lab.token} to confirm." in index
+    assert "if (typed.trim() !== lab.token)" in index
+    assert "fetch(`/api/instructor/lab/${encodeURIComponent(lab.instructor_token)}`, {" in index
+    assert "method: 'DELETE'" in index
+    assert "row.remove()" in index
