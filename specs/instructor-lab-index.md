@@ -1,5 +1,9 @@
 # Spec: Instructor Lab Index
 
+> Superseded in part by `instructor-access-control.md`: the index API now
+> requires the `LAB_TA_ADMIN_PASSPHRASE` passphrase, and dashboard links use
+> the instructor token.
+
 ## Goal
 
 Let instructors recover previous lab sessions from the local SQLite database

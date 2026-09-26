@@ -1,12 +1,12 @@
 # Lab TA
 
 A Socratic teaching assistant for university lab courses, powered through
-LiteLLM with Gemini 2.5 Flash defaults and support for hosted or local models.
+LiteLLM with Google Gemini defaults and support for hosted or local models.
 
 Instructors upload their lab materials once and get a shareable link with a QR code. Students open that link on any device to chat with the TA — by text or voice. The TA never gives direct answers; it guides students toward understanding through questions and hints, using only the content from the uploaded lab documents.
 
-Instructors can also reopen past lab sessions from the saved-labs index at
-`/instructor/labs`.
+Instructors can also reopen past lab sessions from the passphrase-protected
+saved-labs index at `/instructor/labs`.
 
 ---
 
@@ -43,8 +43,8 @@ Opens the app  ──►  Fills in:        Open the student URL in Chrome
                          ▼                 │
                Gets a unique student       │
                URL + QR code to share,     ▼
-               plus an instructor URL  Chat with the TA by typing
-               to reopen the dashboard or speaking
+               plus a private instructor Chat with the TA by typing
+               URL for the dashboard    or speaking
                          │
                          ▼
                Optionally generates,
@@ -135,11 +135,28 @@ Blocked messages are logged on the server side (visible in the terminal where uv
 
 Instructors can also opt in to persistent anonymous chat logs when creating a lab. When enabled, the app stores each completed chat exchange with timestamp, anonymous browser session ID, exchange order, student question, TA response, and whether the message was blocked. Failed TA calls are not stored. Logs are available from the instructor result panel as an on-screen view and JSON download.
 
-Instructor dashboard URLs use the same unauthenticated token model as student links. Anyone with a URL like `/instructor/aB3xY9qR` can manage that lab, including chat logs and quiz state. Treat instructor URLs as private classroom-management links.
+**Instructor access**
 
-The saved-labs index at `/instructor/labs` uses the same unauthenticated model.
-Anyone with that URL can view local lab metadata and open clickable instructor
-dashboard or student links for saved sessions.
+Each lab has two links. The student link uses an eight-character token, for
+example `/lab/aB3xY9qR`. The instructor dashboard uses a separate private
+token of 32 random characters, for example
+`/instructor/Qm3xVt8bLw2pYk9RzC4nHs7dJf1gTe0a`, that cannot be derived from
+the student link. Every instructor operation — the dashboard, chat logs, quiz
+generation, the answer key, publishing, closing, stats, and feature settings —
+is keyed by the instructor token, and a student token on any of those routes
+returns `404`. No student-facing route returns the answer key or the
+instructor URL.
+
+There are no accounts or passwords for individual labs. Whoever holds an
+instructor URL can manage that lab, and a leaked instructor URL cannot be
+revoked without recreating the lab. Bookmark it and do not share it with
+students.
+
+The saved-labs index at `/instructor/labs` lists every lab with its instructor
+link, so it is protected by a passphrase that you set in the
+`LAB_TA_ADMIN_PASSPHRASE` environment variable when starting the server. If the
+variable is not set, the index is disabled and reports why. Both tokens are
+generated with Python's `secrets` module.
 
 **Provider credential security**
 
@@ -149,8 +166,9 @@ only server-side; students never receive it. Local providers may omit the key.
 **Per-lab LLM models**
 
 The setup form accepts LiteLLM model identifiers for TA chat, screening, and
-quiz generation. Defaults are `gemini/gemini-2.5-flash` and
-`gemini/gemini-2.5-flash-lite`. The three roles share one optional API key and
+quiz generation. Defaults are `gemini/gemini-3.5-flash-lite` for chat and quiz
+generation and `gemini/gemini-2.5-flash-lite` for screening, which remains the
+cheaper option for that role. The three roles share one optional API key and
 optional API base URL. Custom base URLs are restricted to loopback addresses to
 prevent unauthenticated setup requests from reaching arbitrary network targets.
 Every distinct model is validated before the lab is saved, and these settings
@@ -212,8 +230,14 @@ Every time you want to use the app, you need **two terminal windows open** on th
 ```bash
 cd ~/coding-projects/lab-ta
 source venv/bin/activate
+export LAB_TA_ADMIN_PASSPHRASE='choose-a-long-passphrase'
 venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+
+The passphrase unlocks the saved-labs index at `/instructor/labs`, which
+lists the private instructor link of every lab. Pick something long and keep
+it to yourself. You can omit the `export` line, in which case the index is
+disabled and each instructor URL must be bookmarked when the lab is created.
 
 You should see output like:
 
@@ -264,15 +288,17 @@ To recover a previous lab session, open:
 https://your-machine-name.tail766770.ts.net/instructor/labs
 ```
 
-The saved-labs page lists local lab sessions with clickable links to each
-instructor dashboard and student URL.
+The saved-labs page asks for the passphrase from `LAB_TA_ADMIN_PASSPHRASE`,
+then lists local lab sessions with clickable links to each instructor
+dashboard and student URL. The passphrase is remembered for the browser tab
+session only.
 
 ### Step 2 — Fill in the Lab Details
 
 | Field | What to enter |
 |-------|--------------|
 | **Provider API Key** | Optional shared credential for the selected hosted provider. Local providers may leave it blank. |
-| **TA Chat Model** | LiteLLM model identifier used for Socratic responses, such as `gemini/gemini-2.5-flash` or `ollama/llama3.1`. |
+| **TA Chat Model** | LiteLLM model identifier used for Socratic responses, such as `gemini/gemini-3.5-flash-lite` or `ollama/llama3.1`. |
 | **Screening Model** | Model used for prompt-injection screening. |
 | **Quiz Model** | Model used for prelab quiz generation. |
 | **Local API Base URL** | Optional loopback HTTP(S) URL such as `http://localhost:11434`; remote custom URLs are rejected. |
@@ -291,8 +317,11 @@ new instructor dashboard. There you will see:
 
 - A **unique student URL**, for example:
   `https://your-machine-name.tail766770.ts.net/lab/aB3xY9qR`
-- A **durable instructor dashboard URL** in the browser address bar, for example:
-  `https://your-machine-name.tail766770.ts.net/instructor/aB3xY9qR`
+- A **private instructor dashboard URL** in the browser address bar and in the
+  Private Instructor Link panel, for example:
+  `https://your-machine-name.tail766770.ts.net/instructor/Qm3xVt8bLw2pYk9RzC4nHs7dJf1gTe0a`.
+  Bookmark it. Anyone who has it can manage the lab, so never share it with
+  students.
 - A **QR code** students can scan with their phone
 - A **Copy Link** button to copy the URL to your clipboard
 - **Feature Availability** controls for editing Quiz Generation and Socratic TA
@@ -413,8 +442,9 @@ lab-ta/
 ├── specs/               Specification-driven development workflow and specs
 ├── requirements.txt     Python package dependencies
 ├── lab_ta.db            SQLite database (auto-created on first run);
-│                        stores lab name, content, API key, model, optional
-│                        chat logs, and quiz data per session token
+│                        stores lab name, content, API key, model, private
+│                        instructor token, optional chat logs, and quiz
+│                        data per session token
 ├── venv/                Python virtual environment (not committed to git)
 └── README.md            This file
 ```
@@ -514,6 +544,20 @@ You have exceeded the selected provider's rate limits or quota.
 
 - Check usage and billing in the selected provider's console.
 - Wait and retry according to that provider's rate-limit policy.
+
+### Saved-labs page says the index is disabled
+
+`LAB_TA_ADMIN_PASSPHRASE` was not set when the server started. Stop the server,
+export the variable in Terminal 1 (see [Running the App](#running-the-app)),
+and start it again. If the page says the passphrase is incorrect, check the
+value you exported; it is compared exactly, including spaces.
+
+### Student can open the instructor dashboard
+
+They cannot from the student link alone. If a student has the dashboard, the
+instructor URL was shared or leaked. There is no way to revoke it: create a new
+lab (which gets new student and instructor links), publish the quiz there, and
+share the new student link.
 
 ### Server starts on wrong port or old version loads
 

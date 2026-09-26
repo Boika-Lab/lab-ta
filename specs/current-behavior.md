@@ -19,32 +19,43 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   and `chat_logging_enabled` checkbox fields.
 - Setup validates every distinct configured model before saving the lab.
 - Uploaded documents are parsed into plain text and stored with a generated
-  eight-character lab token.
+  eight-character student lab token and a separate private instructor token
+  of at least 32 URL-safe characters. Both come from the `secrets` module.
 - Persistent chat logging is disabled unless the instructor explicitly enables
   it during lab setup.
 - Unsupported file types return `400`.
-- The response includes the token, relative student URL, and relative
-  instructor dashboard URL.
+- The response includes the student token, the instructor token, the relative
+  student URL `/lab/{token}`, and the relative instructor dashboard URL
+  `/instructor/{instructor_token}`.
 - After successful lab creation, the instructor UI navigates to the durable
-  `/instructor/{token}` dashboard URL.
-- `GET /instructor/{token}` serves the instructor dashboard for known lab
-  tokens and returns `404` for unknown tokens.
-- `GET /api/instructor/lab/{token}` returns dashboard hydration data including
-  lab name, model, relative student URL, relative instructor URL, chat logging
-  status, and the active published quiz summary when one exists.
-- `GET /instructor/labs` serves a saved-labs index that helps instructors
-  recover previous lab sessions from the local database.
-- `GET /api/instructor/labs` returns saved labs sorted newest first. Each row
-  includes lab name, token, relative student URL, relative instructor dashboard
-  URL, chat logging status, creation timestamp, quiz count/status summary, and
-  chat log exchange count.
+  `/instructor/{instructor_token}` dashboard URL.
+- Every instructor route is keyed by the instructor token. An unknown
+  instructor token returns `404`, and a student token used on an instructor
+  route is treated as unknown and also returns `404`. Instructor tokens and
+  URLs are never returned by student-facing routes.
+- `GET /instructor/{instructor_token}` serves the instructor dashboard.
+- `GET /api/instructor/lab/{instructor_token}` returns dashboard hydration
+  data including lab name, model, student token, instructor token, relative
+  student URL, relative instructor URL, chat logging status, and the active
+  published quiz summary when one exists.
+- The dashboard shows the instructor URL in a Private Instructor Link panel
+  with a notice that it must not be shared with students.
+- `GET /instructor/labs` serves a saved-labs index page that asks for a
+  passphrase, keeps it in `sessionStorage` for the browser session, and sends
+  it in the `X-Lab-TA-Passphrase` header.
+- `GET /api/instructor/labs` requires the `X-Lab-TA-Passphrase` header to match
+  the `LAB_TA_ADMIN_PASSPHRASE` environment variable. It returns `403` when the
+  variable is unset or blank, `401` when the header is missing or wrong, and
+  otherwise saved labs sorted newest first. Each row includes lab name, student
+  token, relative student URL, relative instructor dashboard URL built from the
+  instructor token, chat logging status, creation timestamp, quiz count/status
+  summary, and chat log exchange count.
 - Saved-lab API rows exclude API keys and raw uploaded lab document content.
-- The instructor dashboard uses the same unauthenticated token model as the
-  student page. Anyone with the instructor dashboard URL can manage the lab, and
-  anyone with the saved-labs index URL can view local lab metadata and open
-  dashboard or student links.
+- Anyone who holds an instructor URL can manage that lab. A leaked instructor
+  URL cannot be revoked short of recreating the lab.
 - The instructor dashboard result panel includes chat log controls. Refresh
-  loads the current JSON-backed log view for that token, and Download JSON
+  loads the current JSON-backed log view from
+  `GET /api/instructor/lab/{instructor_token}/chat-logs`, and Download JSON
   exports the same data.
 - The instructor setup form and dashboard show separate Quiz Generation and
   Socratic TA feature groups. Both features default to enabled, and instructors
@@ -105,8 +116,9 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - When chat logging is enabled for a lab, completed TA exchanges and blocked
   refusals are stored in `chat_logs` with timestamp, session ID, exchange order,
   question, response, and blocked status. Failed TA calls are not logged.
-- `GET /api/chat-logs/{token}` returns logged exchanges grouped by anonymous
-  browser session for known lab tokens, and `404` for unknown tokens.
+- `GET /api/instructor/lab/{instructor_token}/chat-logs` returns logged
+  exchanges grouped by anonymous browser session, and `404` for unknown
+  instructor tokens.
 - The student browser creates an anonymous chat session ID per lab token and
   stores it in `localStorage`. This identifier is not a login or identity claim.
 
@@ -118,6 +130,10 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   `chat_logging_enabled INTEGER NOT NULL DEFAULT 0`.
 - Existing SQLite databases with a `labs` table missing `quiz_enabled` or
   `ta_enabled` are upgraded in place with both feature flags enabled.
+- Existing SQLite databases with a `labs` table missing `instructor_token` are
+  upgraded in place: the column is added, every lab without a token receives a
+  fresh one, and a unique index enforces distinct instructor tokens. Later
+  startups keep existing tokens.
 - Existing labs are upgraded with `ta_language='English'` and empty TA custom
   instructions. Existing quizzes are upgraded with nullable education level,
   difficulty, and language plus empty custom instructions.
@@ -143,7 +159,9 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - LiteLLM dispatches TA chat, screening, and quiz generation across supported
   hosted and local providers.
 - `llm_config.py` defines Gemini defaults using LiteLLM provider-prefixed model
-  identifiers.
+  identifiers: `gemini/gemini-3.5-flash-lite` for chat and quiz generation, and
+  `gemini/gemini-2.5-flash-lite` for screening. The `labs` table's model column
+  defaults are interpolated from these values rather than hardcoded separately.
 - Each lab stores immutable chat, screening, and quiz model identifiers with a
   shared optional API key and optional loopback API base URL.
 - The instructor setup form exposes freeform model fields. The dashboard shows
@@ -152,7 +170,12 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 
 ## Prelab Quiz
 
-- `POST /quiz/generate` creates a draft quiz for a known lab with document text.
+- Quiz management routes live under `/api/instructor/lab/{instructor_token}`
+  and require the instructor token. A quiz that belongs to another lab returns
+  `404`.
+- `POST /api/instructor/lab/{instructor_token}/quiz/generate` creates a draft
+  quiz for a lab with document text. The request body carries the generation
+  settings only, not a lab token.
 - Every generation requires `high_school` or `university`, `easy`, `medium`, or
   `hard`, and a nonblank language. Optional custom instructions are stored with
   that quiz generation.
@@ -173,12 +196,17 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   from overriding output, consistency, Socratic, safety, or disclosure rules.
 - Quiz generation asks the configured model to verify each correct-answer label
   against its answer text and explanation before returning JSON.
-- `GET /quiz/{quiz_id}` returns draft or published quiz details including answer
-  data for instructor use.
-- `PUT /quiz/{quiz_id}` edits draft quiz questions only.
-- `POST /quiz/{quiz_id}/publish` publishes a draft quiz when no other quiz is
-  already published for the same lab.
-- `POST /quiz/{quiz_id}/close` closes a published quiz.
+- `GET /api/instructor/lab/{instructor_token}/quiz/{quiz_id}` returns draft
+  or published quiz details including answer data for instructor use. No
+  student-facing route returns correct answers or explanations except the
+  explanation for a wrong answer in the submit response.
+- `PUT /api/instructor/lab/{instructor_token}/quiz/{quiz_id}` edits draft
+  quiz questions only.
+- `POST /api/instructor/lab/{instructor_token}/quiz/{quiz_id}/publish`
+  publishes a draft quiz when no other quiz is already published for the same
+  lab.
+- `POST /api/instructor/lab/{instructor_token}/quiz/{quiz_id}/close` closes a
+  published quiz.
 - `GET /quiz/active/{token}` returns the active published quiz without answer
   data for students, or an empty result when no quiz is active.
 - `POST /quiz/{quiz_id}/submit` accepts student answers only for published
@@ -191,9 +219,10 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   and red for more than one missed question.
 - Starting a quiz round, rendering a question, or retrying missed questions
   resets the student quiz panel to the default background.
-- `GET /quiz/{quiz_id}/stats` returns anonymous attempt and correctness counts.
-- Refreshing `/instructor/{token}` restores the active published quiz ID for
-  stats access. Draft quiz recovery is not supported in the first persistent
+- `GET /api/instructor/lab/{instructor_token}/quiz/{quiz_id}/stats` returns
+  anonymous attempt and correctness counts.
+- Refreshing `/instructor/{instructor_token}` restores the active published
+  quiz ID for stats access. Draft quiz recovery is not supported in the first persistent
   dashboard version.
 - The instructor quiz panel can export generated questions as read-only,
   copy/pasteable text. The student-facing export includes numbered questions
@@ -201,12 +230,14 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   the correct answer label plus answer text, such as `B. <choice B>`.
   Explanations are not included in either export. Draft exports use the current
   editor values, and published quiz exports remain available after refreshing
-  `/instructor/{token}`.
+  `/instructor/{instructor_token}`.
 
 ## Acceptance Criteria
 
 - Current public routes have deterministic tests that do not call live providers.
 - Security screening is enforced before TA generation.
+- Instructor routes reject student tokens, and the saved-labs index rejects
+  requests without the configured passphrase.
 - Prompt template loading and validation have deterministic tests.
 - Quiz state transitions reject invalid operations with clear HTTP errors.
 - README points contributors to this spec workflow.

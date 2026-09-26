@@ -176,9 +176,23 @@
       <a class="btn" href="/">Create New Lab</a>
     </header>
 
+    <section class="panel" aria-labelledby="passphrase-title">
+      <h2 id="passphrase-title" style="font-size:1rem;margin:0 0 0.5rem;">Passphrase</h2>
+      <p class="subtitle" style="margin:0 0 0.75rem;">
+        This index links to the private instructor dashboard of every saved lab.
+        Enter the passphrase set in the <code>LAB_TA_ADMIN_PASSPHRASE</code>
+        environment variable on the server.
+      </p>
+      <form id="passphrase-form" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <input type="password" id="passphrase-input" autocomplete="current-password"
+               placeholder="Passphrase" style="flex:1;min-width:200px;padding:0.5rem 0.75rem;border:1.5px solid #d0d5dd;border-radius:7px;font-size:0.95rem;" />
+        <button type="submit" class="btn primary">Unlock</button>
+      </form>
+    </section>
+
     <section class="panel" aria-labelledby="saved-labs-title">
       <h2 id="saved-labs-title" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">Saved lab sessions</h2>
-      <div id="status">Loading saved labs...</div>
+      <div id="status">Enter the passphrase to load saved labs.</div>
       <div id="labs-list" class="labs-list" aria-live="polite"></div>
     </section>
   </main>
@@ -186,6 +200,7 @@
   <script>
     const statusEl = document.getElementById('status');
     const labsList = document.getElementById('labs-list');
+    const SS_PASSPHRASE = 'labta_admin_passphrase';
 
     function escHtml(str) {
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -240,11 +255,22 @@
       });
     }
 
-    async function loadSavedLabs() {
+    async function loadSavedLabs(passphrase) {
+      statusEl.className = '';
+      statusEl.textContent = 'Loading saved labs...';
+      statusEl.style.display = 'block';
+      labsList.innerHTML = '';
       try {
-        const res = await fetch('/api/instructor/labs');
+        const res = await fetch('/api/instructor/labs', {
+          headers: { 'X-Lab-TA-Passphrase': passphrase },
+        });
         const data = await res.json();
+        if (res.status === 401) {
+          sessionStorage.removeItem(SS_PASSPHRASE);
+          throw new Error('Incorrect passphrase.');
+        }
         if (!res.ok) throw new Error(data.detail || 'Server error');
+        sessionStorage.setItem(SS_PASSPHRASE, passphrase);
         renderLabs(data);
       } catch (err) {
         statusEl.className = 'error';
@@ -253,7 +279,16 @@
       }
     }
 
-    loadSavedLabs();
+    document.getElementById('passphrase-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      loadSavedLabs(document.getElementById('passphrase-input').value);
+    });
+
+    const rememberedPassphrase = sessionStorage.getItem(SS_PASSPHRASE);
+    if (rememberedPassphrase) {
+      document.getElementById('passphrase-input').value = rememberedPassphrase;
+      loadSavedLabs(rememberedPassphrase);
+    }
   </script>
 </body>
 </html>
