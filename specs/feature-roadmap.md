@@ -9,15 +9,18 @@ future feature areas.
 - Lab session creation through `POST /api/configure`.
 - Upload and plain-text extraction for PDF, PPTX, and DOCX lab materials.
 - Unique eight-character student tokens and shareable `/lab/{token}` URLs.
-- Durable unauthenticated instructor dashboard URLs at `/instructor/{token}`.
-- Instructor dashboard hydration through `GET /api/instructor/lab/{token}`.
+- Separate private instructor tokens; durable instructor dashboard URLs at
+  `/instructor/{instructor_token}` that students cannot derive from the lab
+  link.
+- Instructor dashboard hydration through
+  `GET /api/instructor/lab/{instructor_token}`.
 - Per-lab Quiz Generation and Socratic TA availability controls, editable at
   setup time and later from the instructor dashboard.
 - Immutable per-lab Socratic TA language and custom instructions, plus
   immutable per-generation quiz level, difficulty, language, and custom
   instructions.
-- Saved-labs index at `/instructor/labs` with lookup data from
-  `GET /api/instructor/labs`.
+- Passphrase-protected saved-labs index at `/instructor/labs` with lookup data
+  from `GET /api/instructor/labs` (requires `LAB_TA_ADMIN_PASSPHRASE`).
 - QR code display and copy/open-link controls for student access.
 - Student lab page served at `GET /lab/{token}`.
 - Lab metadata lookup through `GET /api/lab/{token}`.
@@ -26,13 +29,14 @@ future feature areas.
 - Optional Persistent Chat Logs completed: instructors can enable anonymous
   per-lab chat persistence from the setup form, then refresh or download logs
   from the instructor result panel.
-- Anonymous chat log export through `GET /api/chat-logs/{token}` returns
-  sessions grouped by browser-local student session ID.
+- Anonymous chat log export through
+  `GET /api/instructor/lab/{instructor_token}/chat-logs` returns sessions
+  grouped by browser-local student session ID.
 - Voice input and text-to-speech in the student browser UI.
 - MathJax rendering for mathematical and chemical notation.
-- Prelab quiz generation through `POST /quiz/generate`.
-- Draft quiz editing through `PUT /quiz/{quiz_id}`.
-- Quiz publishing, single-active-quiz enforcement, and quiz closing.
+- Prelab quiz generation, draft editing, publishing, single-active-quiz
+  enforcement, closing, and stats through instructor-token routes under
+  `/api/instructor/lab/{instructor_token}/quiz/...`.
 - Instructor quiz export for draft and published quizzes, with copy/pasteable
   student-facing text and answer-key text.
 - Student quiz gate through `GET /quiz/active/{token}` and
@@ -41,7 +45,8 @@ future feature areas.
 - Quiz completion feedback in the student UI: green after a perfect round,
   yellow after one missed question, red after multiple missed questions, and
   reset on retry.
-- Anonymous quiz attempt stats through `GET /quiz/{quiz_id}/stats`.
+- Anonymous quiz attempt stats through
+  `GET /api/instructor/lab/{instructor_token}/quiz/{quiz_id}/stats`.
 - LLM Prompt Externalization completed: prompt templates are stored as Markdown
   files under `prompts/` and loaded once at application startup/import.
 - Multi-Provider LLM Configuration completed: all LLM calls use LiteLLM, each
@@ -55,6 +60,9 @@ future feature areas.
 - Completed LLM Prompt Externalization spec.
 - Completed Multi-Provider LLM Configuration spec, including provider-neutral
   dispatch, setup validation, schema upgrades, and loopback endpoint controls.
+- Completed Instructor Access Control spec, including separate instructor
+  tokens, instructor-only quiz and chat-log routes, secure token generation,
+  and the passphrase-protected saved-labs index.
 - Completed Quiz Completion Feedback spec.
 - Completed Optional Persistent Chat Logs spec, including SQLite upgrade
   behavior, route contracts, and template wiring tests.
@@ -78,11 +86,13 @@ future feature areas.
 
 ## Current Known Constraints
 
-- The app stores API keys locally in SQLite.
-- There is no user login or role-based authentication.
-- Anyone with an instructor dashboard URL can manage that lab.
-- Anyone with the saved-labs index URL can view local lab metadata and open
-  dashboard or student links.
+- The app stores API keys locally in SQLite in plaintext.
+- There is no user login or role-based authentication. Access is link-based:
+  the student link and a separate private instructor link per lab.
+- Anyone with an instructor dashboard URL can manage that lab, and a leaked
+  instructor URL cannot be revoked without recreating the lab.
+- The saved-labs index requires the `LAB_TA_ADMIN_PASSPHRASE` passphrase; when
+  it is unset the index is disabled.
 - The instructor and student pages are plain HTML/CSS/JavaScript templates.
 - Database schema setup is handled with `CREATE TABLE IF NOT EXISTS`; there is
   no migration framework.
@@ -91,6 +101,30 @@ future feature areas.
 - Live provider calls are intentionally excluded from automated tests.
 
 ## Completed Roadmap Items
+
+### Instructor Access Control
+
+Separate instructor access from student access so a student holding the lab
+link cannot reach the dashboard, answer key, chat logs, or quiz controls.
+
+#### Implemented Behavior
+
+- Each lab has a private `instructor_token` (32+ URL-safe characters from
+  `secrets.token_urlsafe`) in addition to the eight-character student token,
+  which now also comes from the `secrets` module.
+- All instructor routes are keyed by the instructor token and return `404`
+  for unknown tokens, including student tokens.
+- Quiz management and chat-log routes moved under
+  `/api/instructor/lab/{instructor_token}`; the old unauthenticated routes
+  were removed.
+- The saved-labs index requires the `LAB_TA_ADMIN_PASSPHRASE` passphrase via
+  the `X-Lab-TA-Passphrase` header.
+- Existing databases are upgraded in place with backfilled instructor tokens.
+
+#### Non-Goals
+
+- No user accounts, sessions, or cookies.
+- No revocation or rotation of instructor tokens.
 
 ### Multi-Provider LLM Configuration
 
@@ -324,9 +358,8 @@ navigation but has no way to remove obsolete or sensitive sessions.
   success message.
 - Deleted lab student URLs and instructor dashboard URLs should return `404`.
 - Unknown tokens should return `404` from the deletion API.
-- The current unauthenticated model remains unchanged in this roadmap item:
-  anyone with access to the saved-labs index can initiate deletion after
-  confirmation.
+- Deletion is initiated from the passphrase-protected saved-labs index and
+  should require the passphrase on the deletion API as well.
 
 #### Acceptance Criteria
 
@@ -353,32 +386,17 @@ navigation but has no way to remove obsolete or sensitive sessions.
 - No deletion from the per-lab dashboard in the first version.
 - No authentication or access-control change.
 
-### Instructor Authentication and Access Control
+### Instructor Token Rotation and Stronger Authentication
 
-Evaluate whether Lab TA should move beyond unauthenticated instructor URLs. This
-is a separate design effort from the persistent dashboard because it affects
-sharing, classroom setup, operational complexity, and privacy expectations.
+The Instructor Access Control item settled on separate per-lab instructor
+tokens plus a passphrase for the saved-labs index. Remaining questions for a
+later spec:
 
-#### Questions to Resolve
-
-- Should instructor access use a separate unguessable instructor token, a shared
-  passphrase, local-only admin access, OAuth, or full user accounts?
-- Should the student token and instructor token be different identifiers?
-- Should chat logs and quiz stats require stronger protection than student chat
-  access?
-- How should existing lab sessions be migrated if an access-control model is
-  added later?
-- What is acceptable friction for an instructor running a temporary local lab
-  server in a classroom?
-
-#### Candidate Acceptance Criteria
-
-- The chosen model is documented before implementation.
-- The threat model covers student access, instructor access, API key storage,
-  chat logs, quiz data, and public Tailscale Funnel exposure.
-- Any implementation preserves a low-friction classroom workflow.
-- Automated tests cover authorized access, unauthorized access, and backwards
-  compatibility or migration behavior.
+- Should instructors be able to rotate or revoke a leaked instructor token
+  without recreating the lab?
+- Should the index passphrase also gate a future deletion API?
+- Is a login-based model (shared passphrase for all dashboards, OAuth, or user
+  accounts) worth the added classroom friction?
 
 ### LiteLLM Provider Support
 

@@ -570,6 +570,14 @@
       <p class="hint-text">
         Share this link or QR code with your students. Each student opens it on their device — no login or installation required.
       </p>
+      <div class="logs-panel" id="instructor-link-panel">
+        <div style="font-size:1rem;font-weight:700;color:#1a1a2e;margin-bottom:0.5rem;">Private Instructor Link</div>
+        <div class="url-box" id="instructor-url"></div>
+        <p class="hint-text" style="margin-top:0.5rem;">
+          This dashboard URL is your private management link. Bookmark it, and do not share it with students:
+          anyone who has it can read chat logs and the quiz answer key, publish or close quizzes, and change feature availability.
+        </p>
+      </div>
 
       <div class="logs-panel" id="feature-availability-panel">
         <div style="font-size:1rem;font-weight:700;color:#1a1a2e;margin-bottom:0.85rem;">Feature Availability</div>
@@ -724,7 +732,13 @@
     });
 
     let studentUrl = '';
-    let currentToken = '';
+    let instructorUrl = '';
+    let instructorToken = '';
+    let studentToken = '';
+
+    function instructorApi() {
+      return `/api/instructor/lab/${encodeURIComponent(instructorToken)}`;
+    }
     let currentLabName = '';
     let quizEnabled = true;
     let taEnabled = true;
@@ -798,7 +812,9 @@
 
     function renderDashboard(data) {
       studentUrl = window.location.origin + data.student_url;
-      currentToken = data.token;
+      instructorUrl = window.location.origin + data.instructor_url;
+      instructorToken = data.instructor_token;
+      studentToken = data.token;
       currentLabName = data.lab_name;
       quizEnabled = data.quiz_enabled;
       taEnabled = data.ta_enabled;
@@ -823,6 +839,7 @@
       document.getElementById('success-label').textContent =
         `Lab "${data.lab_name}" is ready!`;
       document.getElementById('student-url').textContent = studentUrl;
+      document.getElementById('instructor-url').textContent = instructorUrl;
       document.getElementById('qr-img').src =
         `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(studentUrl)}&size=200x200`;
       renderChatLogStatus();
@@ -899,13 +916,13 @@
     }
 
     async function saveFeatureAvailability() {
-      if (!currentToken) return;
+      if (!instructorToken) return;
       const btn = document.getElementById('save-features-btn');
       const status = document.getElementById('feature-save-status');
       btn.disabled = true;
       status.textContent = 'Saving...';
       try {
-        const res = await fetch(`/api/instructor/lab/${currentToken}/features`, {
+        const res = await fetch(`${instructorApi()}/features`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -929,14 +946,14 @@
       }
     }
 
-    async function hydrateInstructorDashboard(token) {
+    async function hydrateInstructorDashboard(instructorTokenFromUrl) {
       document.getElementById('setup-form').style.display = 'none';
       document.getElementById('result').style.display = 'none';
       document.getElementById('error-msg').style.display = 'none';
       document.getElementById('loading').style.display = 'flex';
 
       try {
-        const res = await fetch(`/api/instructor/lab/${token}`);
+        const res = await fetch(`/api/instructor/lab/${encodeURIComponent(instructorTokenFromUrl)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Server error');
         renderDashboard(data);
@@ -1001,11 +1018,11 @@
     }
 
     async function loadChatLogs() {
-      if (!currentToken) return;
+      if (!instructorToken) return;
       const out = document.getElementById('logs-output');
       out.textContent = 'Loading...';
       try {
-        const res = await fetch(`/api/chat-logs/${currentToken}`);
+        const res = await fetch(`${instructorApi()}/chat-logs`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Server error');
         lastChatLogs = data;
@@ -1035,7 +1052,7 @@
     }
 
     async function downloadChatLogs() {
-      if (!currentToken) return;
+      if (!instructorToken) return;
       if (!lastChatLogs) await loadChatLogs();
       if (!lastChatLogs) return;
       const blob = new Blob([JSON.stringify(lastChatLogs, null, 2)], {
@@ -1044,7 +1061,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `lab-ta-chat-logs-${currentToken}.json`;
+      a.download = `lab-ta-chat-logs-${studentToken}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1101,10 +1118,10 @@
       hideQuizExport();
 
       try {
-        const res = await fetch('/quiz/generate', {
+        const res = await fetch(`${instructorApi()}/quiz/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: currentToken, n_questions: n, ...settings }),
+          body: JSON.stringify({ n_questions: n, ...settings }),
         });
         const raw = await res.text();
         let data = {};
@@ -1226,7 +1243,7 @@
       }
       const id = publishedQuizId || currentQuizId;
       if (!id) return [];
-      const res = await fetch(`/quiz/${id}`);
+      const res = await fetch(`${instructorApi()}/quiz/${id}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Quiz export failed');
       return data.questions;
@@ -1278,14 +1295,14 @@
       document.getElementById('quiz-error').style.display = 'none';
 
       try {
-        let res = await fetch(`/quiz/${currentQuizId}`, {
+        let res = await fetch(`${instructorApi()}/quiz/${currentQuizId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ questions }),
         });
         if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Save failed'); }
 
-        res = await fetch(`/quiz/${currentQuizId}/publish`, { method: 'POST' });
+        res = await fetch(`${instructorApi()}/quiz/${currentQuizId}/publish`, { method: 'POST' });
         const data = await res.json();
 
         if (!res.ok) {
@@ -1293,9 +1310,9 @@
             const match = data.detail.match(/#(\d+)/);
             const existingId = match ? parseInt(match[1]) : null;
             if (existingId && confirm(`A published quiz already exists (quiz #${existingId}). Close it and publish this one?`)) {
-              const closeRes = await fetch(`/quiz/${existingId}/close`, { method: 'POST' });
+              const closeRes = await fetch(`${instructorApi()}/quiz/${existingId}/close`, { method: 'POST' });
               if (!closeRes.ok) throw new Error('Failed to close existing quiz');
-              const pubRes = await fetch(`/quiz/${currentQuizId}/publish`, { method: 'POST' });
+              const pubRes = await fetch(`${instructorApi()}/quiz/${currentQuizId}/publish`, { method: 'POST' });
               if (!pubRes.ok) { const d = await pubRes.json(); throw new Error(d.detail || 'Publish failed'); }
               publishedQuizId = currentQuizId;
               showPublishedState();
@@ -1335,7 +1352,7 @@
       panel.innerHTML = '<p style="color:#888;font-size:0.9rem;">Loading…</p>';
       panel.style.display = 'block';
       try {
-        const res = await fetch(`/quiz/${id}/stats`);
+        const res = await fetch(`${instructorApi()}/quiz/${id}/stats`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Error');
         if (data.stats.length === 0) {
@@ -1362,7 +1379,7 @@
       if (!publishedQuizId) return;
       if (!confirm('Close the current quiz and generate a new one?')) return;
       try {
-        const res = await fetch(`/quiz/${publishedQuizId}/close`, { method: 'POST' });
+        const res = await fetch(`${instructorApi()}/quiz/${publishedQuizId}/close`, { method: 'POST' });
         if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Error'); }
         publishedQuizId = null;
         currentQuizId = null;

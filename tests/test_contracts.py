@@ -52,17 +52,19 @@ def insert_lab(
     chat_model: str = llm_config.CHAT_MODEL,
     screening_model: str = llm_config.SCREENING_MODEL,
     quiz_model: str = llm_config.QUIZ_MODEL,
+    instructor_token: str | None = None,
 ) -> str:
     with main.get_db() as conn:
         conn.execute(
             "INSERT INTO labs "
-            "(token, lab_name, lab_content, api_key, model, screening_model, "
-            "quiz_model, api_base, created_at, "
+            "(token, instructor_token, lab_name, lab_content, api_key, model, "
+            "screening_model, quiz_model, api_base, created_at, "
             "chat_logging_enabled, quiz_enabled, ta_enabled, ta_language, "
             "ta_custom_instructions) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 token,
+                instructor_token or itoken(token),
                 lab_name,
                 content,
                 api_key,
@@ -82,9 +84,18 @@ def insert_lab(
     return token
 
 
+def itoken(token: str) -> str:
+    """Deterministic instructor token used by insert_lab for a student token."""
+    return f"instructor-token-for-{token}"
+
+
+def iapi(token: str) -> str:
+    """Instructor API prefix for a lab inserted with insert_lab."""
+    return f"/api/instructor/lab/{itoken(token)}"
+
+
 def quiz_payload(token: str, n_questions: int = 3, **overrides) -> dict:
     payload = {
-        "token": token,
         "n_questions": n_questions,
         "education_level": "university",
         "difficulty": "medium",
@@ -137,8 +148,11 @@ def test_configure_parses_supported_upload_and_returns_student_url(client, monke
     assert response.status_code == 200
     body = response.json()
     assert len(body["token"]) == 8
+    assert body["token"].isalnum()
+    assert len(body["instructor_token"]) >= 32
+    assert body["instructor_token"] != body["token"]
     assert body["student_url"] == f"/lab/{body['token']}"
-    assert body["instructor_url"] == f"/instructor/{body['token']}"
+    assert body["instructor_url"] == f"/instructor/{body['instructor_token']}"
 
     with main.get_db() as conn:
         row = conn.execute(
@@ -337,7 +351,9 @@ def test_configure_stores_trimmed_immutable_ta_settings(client):
 
     assert response.status_code == 200
     token = response.json()["token"]
-    dashboard = client.get(f"/api/instructor/lab/{token}").json()
+    dashboard = client.get(
+        f"/api/instructor/lab/{response.json()['instructor_token']}"
+    ).json()
     assert dashboard["ta_language"] == "Spanish"
     assert dashboard["ta_custom_instructions"] == "Use examples from the handout."
 
@@ -464,6 +480,14 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
     assert "screening_model" in columns
     assert "quiz_model" in columns
     assert "api_base" in columns
+    assert "instructor_token" in columns
+    with main.get_db() as conn:
+        migrated = conn.execute(
+            "SELECT instructor_token FROM labs WHERE token = 'legacy1'"
+        ).fetchone()
+    assert migrated["instructor_token"]
+    assert len(migrated["instructor_token"]) >= 32
+    assert migrated["instructor_token"] != "legacy1"
     # The prefix migration prepends `gemini/` to an existing model rather than
     # replacing it with the current default, so this is the legacy value fixed up.
     assert row["model"] == "gemini/gemini-2.5-flash"
@@ -516,7 +540,7 @@ def test_lab_info_returns_contract_and_404(client):
 def test_instructor_dashboard_page_known_token_and_404(client):
     token = insert_lab()
 
-    response = client.get(f"/instructor/{token}")
+    response = client.get(f"/instructor/{itoken(token)}")
     assert response.status_code == 200
     assert "Lab TA" in response.text
     assert "Configure a Socratic teaching assistant" in response.text
@@ -525,23 +549,33 @@ def test_instructor_dashboard_page_known_token_and_404(client):
     assert missing.status_code == 404
     assert missing.json()["detail"] == "Lab not found"
 
+    student_token_used = client.get(f"/instructor/{token}")
+    assert student_token_used.status_code == 404
+
 
 def test_instructor_labs_page_is_not_interpreted_as_token(client):
     response = client.get("/instructor/labs")
 
     assert response.status_code == 200
     assert "Saved Labs" in response.text
-    assert "fetch('/api/instructor/labs')" in response.text
+    assert "fetch('/api/instructor/labs', {" in response.text
 
 
-def test_instructor_labs_api_empty_database(client):
-    response = client.get("/api/instructor/labs")
+PASSPHRASE_HEADER = {"X-Lab-TA-Passphrase": "open-sesame"}
+
+
+def test_instructor_labs_api_empty_database(client, monkeypatch):
+    monkeypatch.setenv("LAB_TA_ADMIN_PASSPHRASE", "open-sesame")
+    response = client.get("/api/instructor/labs", headers=PASSPHRASE_HEADER)
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_instructor_labs_api_returns_operational_summary_newest_first(client):
+def test_instructor_labs_api_returns_operational_summary_newest_first(
+    client, monkeypatch
+):
+    monkeypatch.setenv("LAB_TA_ADMIN_PASSPHRASE", "open-sesame")
     older = insert_lab(
         token="old12345",
         lab_name="Older Lab",
@@ -576,7 +610,7 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(client):
     main.persist_chat_log(newer, "session-a", "Question 1?", "Response 1", False)
     main.persist_chat_log(newer, "session-b", "Question 2?", "Response 2", True)
 
-    response = client.get("/api/instructor/labs")
+    response = client.get("/api/instructor/labs", headers=PASSPHRASE_HEADER)
 
     assert response.status_code == 200
     labs = response.json()
@@ -585,7 +619,7 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(client):
         "token": newer,
         "lab_name": "Newer Lab",
         "student_url": f"/lab/{newer}",
-        "instructor_url": f"/instructor/{newer}",
+        "instructor_url": f"/instructor/{itoken(newer)}",
         "chat_logging_enabled": True,
         "quiz_enabled": True,
         "ta_enabled": True,
@@ -599,7 +633,7 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(client):
         "token": older,
         "lab_name": "Older Lab",
         "student_url": f"/lab/{older}",
-        "instructor_url": f"/instructor/{older}",
+        "instructor_url": f"/instructor/{itoken(older)}",
         "chat_logging_enabled": False,
         "quiz_enabled": True,
         "ta_enabled": True,
@@ -617,18 +651,19 @@ def test_instructor_labs_api_returns_operational_summary_newest_first(client):
 def test_instructor_lab_api_returns_dashboard_hydration_without_active_quiz(client):
     token = insert_lab(chat_logging_enabled=True)
 
-    response = client.get(f"/api/instructor/lab/{token}")
+    response = client.get(iapi(token))
 
     assert response.status_code == 200
     assert response.json() == {
         "token": token,
+        "instructor_token": itoken(token),
         "lab_name": "Electrochemistry",
         "model": llm_config.CHAT_MODEL,
         "screening_model": llm_config.SCREENING_MODEL,
         "quiz_model": llm_config.QUIZ_MODEL,
         "api_base": None,
         "student_url": f"/lab/{token}",
-        "instructor_url": f"/instructor/{token}",
+        "instructor_url": f"/instructor/{itoken(token)}",
         "chat_logging_enabled": True,
         "quiz_enabled": True,
         "ta_enabled": True,
@@ -640,6 +675,9 @@ def test_instructor_lab_api_returns_dashboard_hydration_without_active_quiz(clie
     missing = client.get("/api/instructor/lab/missing")
     assert missing.status_code == 404
     assert missing.json()["detail"] == "Lab not found"
+
+    student_token_used = client.get(f"/api/instructor/lab/{token}")
+    assert student_token_used.status_code == 404
 
 
 def test_instructor_lab_api_returns_published_quiz_for_stats_recovery(client):
@@ -657,7 +695,7 @@ def test_instructor_lab_api_returns_published_quiz_for_stats_recovery(client):
         )
         conn.commit()
 
-    response = client.get(f"/api/instructor/lab/{token}")
+    response = client.get(iapi(token))
 
     assert response.status_code == 200
     active_quiz = response.json()["active_quiz"]
@@ -680,7 +718,7 @@ def test_instructor_lab_feature_patch_updates_flags_and_404(client):
     token = insert_lab()
 
     response = client.patch(
-        f"/api/instructor/lab/{token}/features",
+        f"{iapi(token)}/features",
         json={"quiz_enabled": False, "ta_enabled": False},
     )
 
@@ -1017,7 +1055,7 @@ def test_chat_logs_endpoint_groups_ordered_sessions_and_404(client):
     main.persist_chat_log(token, "session-a", "Blocked?", "Refusal", True)
     main.persist_chat_log(token, "session-b", "Second?", "Second response", False)
 
-    response = client.get(f"/api/chat-logs/{token}")
+    response = client.get(f"{iapi(token)}/chat-logs")
 
     assert response.status_code == 200
     body = response.json()
@@ -1036,22 +1074,25 @@ def test_chat_logs_endpoint_groups_ordered_sessions_and_404(client):
     ]
     assert [ex["exchange_index"] for ex in body["sessions"][1]["exchanges"]] == [1, 2]
 
-    missing = client.get("/api/chat-logs/missing")
+    missing = client.get("/api/instructor/lab/missing/chat-logs")
     assert missing.status_code == 404
     assert missing.json()["detail"] == "Lab not found"
+
+    student_token_used = client.get(f"/api/instructor/lab/{token}/chat-logs")
+    assert student_token_used.status_code == 404
 
 
 def test_quiz_generate_validates_lab_content_and_question_count(client):
     empty_token = insert_lab(token="empty123", content="")
 
     no_content = client.post(
-        "/quiz/generate", json=quiz_payload(empty_token, 5)
+        f"{iapi(empty_token)}/quiz/generate", json=quiz_payload(empty_token, 5)
     )
     assert no_content.status_code == 400
     assert no_content.json()["detail"] == "No document text available for this lab"
 
     token = insert_lab(token="full1234")
-    too_few = client.post("/quiz/generate", json=quiz_payload(token, 2))
+    too_few = client.post(f"{iapi(token)}/quiz/generate", json=quiz_payload(token, 2))
     assert too_few.status_code == 400
     assert too_few.json()["detail"] == "n_questions must be between 3 and 10"
 
@@ -1060,13 +1101,13 @@ def test_quiz_generate_validates_required_generation_settings(client):
     token = insert_lab()
 
     missing = client.post(
-        "/quiz/generate",
-        json={"token": token, "n_questions": 3},
+        f"{iapi(token)}/quiz/generate",
+        json={"n_questions": 3},
     )
     assert missing.status_code == 422
 
     invalid_level = client.post(
-        "/quiz/generate",
+        f"{iapi(token)}/quiz/generate",
         json=quiz_payload(token, education_level="graduate"),
     )
     assert invalid_level.status_code == 400
@@ -1075,7 +1116,7 @@ def test_quiz_generate_validates_required_generation_settings(client):
     )
 
     invalid_difficulty = client.post(
-        "/quiz/generate",
+        f"{iapi(token)}/quiz/generate",
         json=quiz_payload(token, difficulty="extreme"),
     )
     assert invalid_difficulty.status_code == 400
@@ -1084,14 +1125,14 @@ def test_quiz_generate_validates_required_generation_settings(client):
     )
 
     blank_language = client.post(
-        "/quiz/generate",
+        f"{iapi(token)}/quiz/generate",
         json=quiz_payload(token, language="   "),
     )
     assert blank_language.status_code == 400
     assert blank_language.json()["detail"] == "language must not be blank"
 
     long_custom = client.post(
-        "/quiz/generate",
+        f"{iapi(token)}/quiz/generate",
         json=quiz_payload(token, custom_instructions="x" * 4001),
     )
     assert long_custom.status_code == 400
@@ -1113,7 +1154,7 @@ def test_replacement_quizzes_keep_distinct_immutable_generation_settings(
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
     first = client.post(
-        "/quiz/generate",
+        f"{iapi(token)}/quiz/generate",
         json=quiz_payload(
             token,
             education_level="high_school",
@@ -1123,7 +1164,7 @@ def test_replacement_quizzes_keep_distinct_immutable_generation_settings(
         ),
     )
     second = client.post(
-        "/quiz/generate",
+        f"{iapi(token)}/quiz/generate",
         json=quiz_payload(
             token,
             education_level="university",
@@ -1149,10 +1190,10 @@ def test_replacement_quizzes_keep_distinct_immutable_generation_settings(
         "language": "German",
         "custom_instructions": "Include data interpretation.",
     }
-    assert client.get(f"/quiz/{first.json()['quiz_id']}").json()[
+    assert client.get(f"{iapi(token)}/quiz/{first.json()['quiz_id']}").json()[
         "generation_settings"
     ] == first_settings
-    assert client.get(f"/quiz/{second.json()['quiz_id']}").json()[
+    assert client.get(f"{iapi(token)}/quiz/{second.json()['quiz_id']}").json()[
         "generation_settings"
     ] == second_settings
     assert generated_calls[0][7:] == ("Spanish", "Focus on vocabulary.")
@@ -1167,7 +1208,7 @@ def test_quiz_generate_reports_provider_neutral_error(client, monkeypatch):
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
-    response = client.post("/quiz/generate", json=quiz_payload(token))
+    response = client.post(f"{iapi(token)}/quiz/generate", json=quiz_payload(token))
 
     assert response.status_code == 502
     assert response.json()["detail"] == (
@@ -1185,7 +1226,7 @@ def test_quiz_lifecycle_active_submit_and_stats(client, monkeypatch):
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
     generated = client.post(
-        "/quiz/generate", json=quiz_payload(token)
+        f"{iapi(token)}/quiz/generate", json=quiz_payload(token)
     )
     assert generated.status_code == 200
     quiz = generated.json()
@@ -1211,11 +1252,11 @@ def test_quiz_lifecycle_active_submit_and_stats(client, monkeypatch):
         }
         for q in quiz["questions"]
     ]
-    update = client.put(f"/quiz/{quiz_id}", json={"questions": edited_questions})
+    update = client.put(f"{iapi(token)}/quiz/{quiz_id}", json={"questions": edited_questions})
     assert update.status_code == 200
     assert update.json() == {"ok": True}
 
-    publish = client.post(f"/quiz/{quiz_id}/publish")
+    publish = client.post(f"{iapi(token)}/quiz/{quiz_id}/publish")
     assert publish.status_code == 200
     assert publish.json() == {"ok": True, "quiz_id": quiz_id}
 
@@ -1250,14 +1291,14 @@ def test_quiz_lifecycle_active_submit_and_stats(client, monkeypatch):
         "explanation": None,
     }
 
-    stats = client.get(f"/quiz/{quiz_id}/stats")
+    stats = client.get(f"{iapi(token)}/quiz/{quiz_id}/stats")
     assert stats.status_code == 200
     first = stats.json()["stats"][0]
     assert first["total_attempts"] == 2
     assert first["correct_attempts"] == 1
     assert first["pct_correct"] == 50.0
 
-    close = client.post(f"/quiz/{quiz_id}/close")
+    close = client.post(f"{iapi(token)}/quiz/{quiz_id}/close")
     assert close.status_code == 200
     assert close.json() == {"ok": True}
 
@@ -1277,25 +1318,25 @@ def test_disabled_quiz_routes_return_403_and_preserve_data(client, monkeypatch):
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
-    generated = client.post("/quiz/generate", json=quiz_payload(token))
+    generated = client.post(f"{iapi(token)}/quiz/generate", json=quiz_payload(token))
     quiz_id = generated.json()["quiz_id"]
     question_id = generated.json()["questions"][0]["id"]
-    assert client.post(f"/quiz/{quiz_id}/publish").status_code == 200
+    assert client.post(f"{iapi(token)}/quiz/{quiz_id}/publish").status_code == 200
 
     disabled = client.patch(
-        f"/api/instructor/lab/{token}/features",
+        f"{iapi(token)}/features",
         json={"quiz_enabled": False, "ta_enabled": True},
     )
     assert disabled.status_code == 200
 
     assert client.get(f"/quiz/active/{token}").status_code == 403
-    assert client.get(f"/quiz/{quiz_id}").status_code == 403
-    assert client.get(f"/quiz/{quiz_id}/stats").status_code == 403
+    assert client.get(f"{iapi(token)}/quiz/{quiz_id}").status_code == 403
+    assert client.get(f"{iapi(token)}/quiz/{quiz_id}/stats").status_code == 403
     assert client.post(
         f"/quiz/{quiz_id}/submit",
         json={"answers": {str(question_id): "B"}},
     ).status_code == 403
-    assert client.post(f"/quiz/{quiz_id}/close").status_code == 403
+    assert client.post(f"{iapi(token)}/quiz/{quiz_id}/close").status_code == 403
 
     generation_called = False
 
@@ -1306,18 +1347,18 @@ def test_disabled_quiz_routes_return_403_and_preserve_data(client, monkeypatch):
 
     monkeypatch.setattr(main, "generate_quiz", should_not_generate)
     generate_disabled = client.post(
-        "/quiz/generate", json=quiz_payload(token)
+        f"{iapi(token)}/quiz/generate", json=quiz_payload(token)
     )
     assert generate_disabled.status_code == 403
     assert generate_disabled.json()["detail"] == "Quiz is disabled for this lab"
     assert generation_called is False
 
     reenabled = client.patch(
-        f"/api/instructor/lab/{token}/features",
+        f"{iapi(token)}/features",
         json={"quiz_enabled": True, "ta_enabled": True},
     )
     assert reenabled.status_code == 200
-    restored = client.get(f"/quiz/{quiz_id}")
+    restored = client.get(f"{iapi(token)}/quiz/{quiz_id}")
     assert restored.status_code == 200
     assert restored.json()["quiz_id"] == quiz_id
 
@@ -1330,14 +1371,14 @@ def test_only_one_published_quiz_per_lab(client, monkeypatch):
 
     monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
 
-    first = client.post("/quiz/generate", json=quiz_payload(token))
-    second = client.post("/quiz/generate", json=quiz_payload(token))
+    first = client.post(f"{iapi(token)}/quiz/generate", json=quiz_payload(token))
+    second = client.post(f"{iapi(token)}/quiz/generate", json=quiz_payload(token))
     first_id = first.json()["quiz_id"]
     second_id = second.json()["quiz_id"]
 
-    assert client.post(f"/quiz/{first_id}/publish").status_code == 200
+    assert client.post(f"{iapi(token)}/quiz/{first_id}/publish").status_code == 200
 
-    conflict = client.post(f"/quiz/{second_id}/publish")
+    conflict = client.post(f"{iapi(token)}/quiz/{second_id}/publish")
     assert conflict.status_code == 409
     assert f"quiz #{first_id}" in conflict.json()["detail"]
 
@@ -1389,7 +1430,7 @@ def test_instructor_chat_logging_checkbox_exists():
     assert "data.set('ta_enabled', document.getElementById('ta-enabled').checked ? 'true' : 'false')" in template
     assert "function loadChatLogs()" in template
     assert "function downloadChatLogs()" in template
-    assert "/api/chat-logs/${currentToken}" in template
+    assert "fetch(`${instructorApi()}/chat-logs`)" in template
     assert 'id="ta-language"' in socratic_group
     assert 'name="ta_language"' in socratic_group
     assert 'value="English"' in socratic_group
@@ -1402,17 +1443,17 @@ def test_instructor_dashboard_hydration_hooks_exist():
 
     assert "window.location.assign(json.instructor_url)" in template
     assert 'href="/instructor/labs"' in template
-    assert "function hydrateInstructorDashboard(token)" in template
+    assert "function hydrateInstructorDashboard(instructorTokenFromUrl)" in template
     assert "function renderDashboard(data)" in template
     assert "window.location.pathname.match(/^\\/instructor\\/([^/]+)$/)" in template
-    assert "fetch(`/api/instructor/lab/${token}`)" in template
+    assert "fetch(`/api/instructor/lab/${encodeURIComponent(instructorTokenFromUrl)}`)" in template
     assert "data.active_quiz.quiz_id" in template
     assert "publishedQuizId = data.active_quiz.quiz_id" in template
     assert "document.getElementById('quiz-gen-controls').style.display = 'block'" in template
     assert 'id="dashboard-quiz-enabled"' in template
     assert 'id="dashboard-ta-enabled"' in template
     assert "function saveFeatureAvailability()" in template
-    assert "fetch(`/api/instructor/lab/${currentToken}/features`" in template
+    assert "fetch(`${instructorApi()}/features`" in template
     assert "quiz_enabled: document.getElementById('dashboard-quiz-enabled').checked" in template
     assert "ta_enabled: document.getElementById('dashboard-ta-enabled').checked" in template
     assert "showQuizDisabledState()" in template
@@ -1457,7 +1498,7 @@ def test_instructor_quiz_export_hooks_exist():
     ]
 
     assert "return collectQuestions()" in template
-    assert "fetch(`/quiz/${id}`)" in template
+    assert "fetch(`${instructorApi()}/quiz/${id}`)" in template
 
 
 def test_instructor_per_generation_settings_and_local_storage_hooks_exist():
@@ -1497,7 +1538,12 @@ def test_instructor_labs_template_hooks_exist():
     template = Path("templates/instructor_labs.html").read_text()
 
     assert "Saved Labs" in template
-    assert "fetch('/api/instructor/labs')" in template
+    assert 'id="passphrase-form"' in template
+    assert 'id="passphrase-input"' in template
+    assert "fetch('/api/instructor/labs', {" in template
+    assert "'X-Lab-TA-Passphrase': passphrase" in template
+    assert "sessionStorage.setItem(SS_PASSPHRASE, passphrase)" in template
+    assert "LAB_TA_ADMIN_PASSPHRASE" in template
     assert 'href="${escAttr(lab.instructor_url)}"' in template
     assert 'href="${escAttr(lab.student_url)}"' in template
     assert "Instructor Dashboard" in template
@@ -1551,3 +1597,174 @@ def test_student_feature_availability_hooks_exist():
     assert "No prelab quiz is currently available for this lab." in template
     assert "There are no additional online activities for this lab right now." in template
     assert "document.getElementById('input-bar').style.display  = taEnabled ? 'flex' : 'none'" in template
+
+
+def test_token_generators_are_secure_and_distinct():
+    assert not hasattr(main, "random")
+    student = main.generate_token()
+    instructor = main.generate_instructor_token()
+    assert len(student) == 8 and student.isalnum()
+    assert len(instructor) >= 32
+    assert set(instructor) <= set(
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    )
+    assert main.generate_instructor_token() != instructor
+
+
+def test_init_db_assigns_distinct_instructor_tokens_to_every_legacy_lab(
+    tmp_path, monkeypatch
+):
+    legacy_db = tmp_path / "legacy-two.db"
+    monkeypatch.setattr(main, "DB_PATH", legacy_db)
+    with sqlite3.connect(legacy_db) as conn:
+        conn.execute(
+            "CREATE TABLE labs (token TEXT PRIMARY KEY, lab_name TEXT, "
+            "lab_content TEXT, api_key TEXT, model TEXT, created_at TIMESTAMP)"
+        )
+        conn.execute(
+            "INSERT INTO labs VALUES ('one11111', 'One', 'x', 'k', 'm', '2026-05-15')"
+        )
+        conn.execute(
+            "INSERT INTO labs VALUES ('two22222', 'Two', 'x', 'k', 'm', '2026-05-16')"
+        )
+
+    main.init_db()
+    first_tokens = None
+    with main.get_db() as conn:
+        rows = conn.execute(
+            "SELECT token, instructor_token FROM labs ORDER BY token"
+        ).fetchall()
+        first_tokens = {row["token"]: row["instructor_token"] for row in rows}
+    assert all(len(value) >= 32 for value in first_tokens.values())
+    assert len(set(first_tokens.values())) == 2
+
+    # A second startup must not rotate tokens that already exist.
+    main.init_db()
+    with main.get_db() as conn:
+        rows = conn.execute(
+            "SELECT token, instructor_token FROM labs ORDER BY token"
+        ).fetchall()
+    assert {row["token"]: row["instructor_token"] for row in rows} == first_tokens
+
+
+def test_student_token_cannot_reach_quiz_management_routes(client, monkeypatch):
+    token = insert_lab()
+
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[4])
+
+    monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
+    quiz_id = client.post(
+        f"{iapi(token)}/quiz/generate", json=quiz_payload(token)
+    ).json()["quiz_id"]
+    assert client.post(f"{iapi(token)}/quiz/{quiz_id}/publish").status_code == 200
+
+    student_prefix = f"/api/instructor/lab/{token}"
+    assert client.post(
+        f"{student_prefix}/quiz/generate", json=quiz_payload(token)
+    ).status_code == 404
+    assert client.get(f"{student_prefix}/quiz/{quiz_id}").status_code == 404
+    assert client.put(
+        f"{student_prefix}/quiz/{quiz_id}", json={"questions": []}
+    ).status_code == 404
+    assert client.post(f"{student_prefix}/quiz/{quiz_id}/publish").status_code == 404
+    assert client.post(f"{student_prefix}/quiz/{quiz_id}/close").status_code == 404
+    assert client.get(f"{student_prefix}/quiz/{quiz_id}/stats").status_code == 404
+    assert client.patch(
+        f"{student_prefix}/features", json={"quiz_enabled": False, "ta_enabled": False}
+    ).status_code == 404
+
+    # Student-facing routes still work and never expose answer data.
+    active = client.get(f"/quiz/active/{token}")
+    assert active.status_code == 200
+    assert active.json()["quiz_id"] == quiz_id
+    assert "correct" not in active.text and "explanation" not in active.text
+
+
+def test_removed_unauthenticated_quiz_routes_do_not_leak_answers(client, monkeypatch):
+    token = insert_lab()
+
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[4])
+
+    monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
+    quiz_id = client.post(
+        f"{iapi(token)}/quiz/generate", json=quiz_payload(token)
+    ).json()["quiz_id"]
+
+    for method, path in [
+        ("GET", f"/quiz/{quiz_id}"),
+        ("PUT", f"/quiz/{quiz_id}"),
+        ("POST", f"/quiz/{quiz_id}/publish"),
+        ("POST", f"/quiz/{quiz_id}/close"),
+        ("GET", f"/quiz/{quiz_id}/stats"),
+        ("POST", "/quiz/generate"),
+        ("GET", f"/api/chat-logs/{token}"),
+    ]:
+        response = client.request(method, path, json={})
+        assert response.status_code in {404, 405}, (method, path, response.status_code)
+        assert "Explanation 1" not in response.text
+        assert '"correct"' not in response.text
+
+
+def test_quiz_routes_reject_another_labs_instructor_token(client, monkeypatch):
+    owner = insert_lab(token="owner001")
+    other = insert_lab(token="other002")
+
+    async def fake_generate_quiz(*args):
+        return sample_questions(args[4])
+
+    monkeypatch.setattr(main, "generate_quiz", fake_generate_quiz)
+    quiz_id = client.post(
+        f"{iapi(owner)}/quiz/generate", json=quiz_payload(owner)
+    ).json()["quiz_id"]
+
+    assert client.get(f"{iapi(other)}/quiz/{quiz_id}").status_code == 404
+    assert client.post(f"{iapi(other)}/quiz/{quiz_id}/publish").status_code == 404
+    assert client.get(f"{iapi(other)}/quiz/{quiz_id}/stats").status_code == 404
+    assert client.get(f"{iapi(owner)}/quiz/{quiz_id}").status_code == 200
+
+
+def test_saved_labs_api_requires_configured_passphrase(client, monkeypatch):
+    insert_lab()
+
+    monkeypatch.delenv("LAB_TA_ADMIN_PASSPHRASE", raising=False)
+    disabled = client.get("/api/instructor/labs", headers=PASSPHRASE_HEADER)
+    assert disabled.status_code == 403
+    assert "LAB_TA_ADMIN_PASSPHRASE" in disabled.json()["detail"]
+
+    monkeypatch.setenv("LAB_TA_ADMIN_PASSPHRASE", "   ")
+    assert client.get("/api/instructor/labs", headers=PASSPHRASE_HEADER).status_code == 403
+
+    monkeypatch.setenv("LAB_TA_ADMIN_PASSPHRASE", "open-sesame")
+    assert client.get("/api/instructor/labs").status_code == 401
+    wrong = client.get(
+        "/api/instructor/labs", headers={"X-Lab-TA-Passphrase": "wrong"}
+    )
+    assert wrong.status_code == 401
+    assert wrong.json()["detail"] == "Incorrect passphrase"
+
+    ok = client.get("/api/instructor/labs", headers=PASSPHRASE_HEADER)
+    assert ok.status_code == 200
+    assert ok.json()[0]["instructor_url"] == f"/instructor/{itoken('abc12345')}"
+    assert "api_key" not in ok.json()[0]
+    assert "lab_content" not in ok.json()[0]
+
+
+def test_instructor_dashboard_private_link_hooks_exist():
+    template = Path("templates/instructor.html").read_text()
+
+    assert 'id="instructor-url"' in template
+    assert "Private Instructor Link" in template
+    assert "do not share it with students" in template
+    assert "function instructorApi()" in template
+    assert "instructorToken = data.instructor_token" in template
+    assert "studentToken = data.token" in template
+    assert "instructorUrl = window.location.origin + data.instructor_url" in template
+    assert "fetch(`${instructorApi()}/quiz/generate`" in template
+    assert "body: JSON.stringify({ n_questions: n, ...settings })" in template
+    assert "fetch(`${instructorApi()}/quiz/${currentQuizId}/publish`" in template
+    assert "fetch(`${instructorApi()}/quiz/${id}/stats`)" in template
+    assert "fetch(`${instructorApi()}/quiz/${publishedQuizId}/close`" in template
+    assert "currentToken" not in template
+    assert "/api/chat-logs/" not in template

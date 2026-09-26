@@ -10,6 +10,8 @@ not a target architecture.
 - SQLite database stored as `lab_ta.db` by default.
 - Optional `LAB_TA_DB_PATH` environment variable for overriding the database
   path, primarily used by tests.
+- Optional `LAB_TA_ADMIN_PASSPHRASE` environment variable that unlocks the
+  saved-labs index. When unset, the index API returns `403`.
 
 ## Backend Modules
 
@@ -32,8 +34,10 @@ not a target architecture.
   controls, quiz generation, quiz publishing, and stats UI.
 - The instructor template uses `localStorage` for the last TA language/custom
   instructions and quiz level/difficulty/language/custom instructions.
-- `templates/instructor_labs.html`: saved-labs index that fetches
-  `/api/instructor/labs` and links to instructor dashboard and student URLs.
+- `templates/instructor_labs.html`: saved-labs index that asks for the admin
+  passphrase, keeps it in `sessionStorage`, fetches `/api/instructor/labs` with
+  the `X-Lab-TA-Passphrase` header, and links to instructor dashboard and
+  student URLs.
 - `templates/student.html`: student chat UI, voice input, text-to-speech,
   MathJax rendering, anonymous browser-local chat session ID, prelab quiz gate,
   retry flow, and local quiz progress storage.
@@ -72,6 +76,16 @@ not a target architecture.
   controls, and browser-local session IDs.
 - The current verification command is `python -m pytest`.
 
+## Access Model
+
+- Student routes are keyed by an eight-character student token.
+- Instructor routes are keyed by a separate private instructor token of at
+  least 32 URL-safe characters stored in `labs.instructor_token`. Both tokens
+  come from the `secrets` module.
+- There are no user accounts, sessions, or cookies. Holding an instructor URL
+  is what grants management access to that lab.
+
 ## Environment Variables
 
 - `LAB_TA_DB_PATH`: override the SQLite database path, primarily for tests.
+- `LAB_TA_ADMIN_PASSPHRASE`: passphrase required by `GET /api/instructor/labs`.

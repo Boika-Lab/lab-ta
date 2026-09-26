@@ -24,6 +24,9 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   Gemini model role configuration from the earlier Gemini-only implementation.
 - `gemini-3-5-flash-lite-defaults.md` documents the default chat and quiz model
   identifiers for new labs and where they are defined.
+- `instructor-access-control.md` documents separate instructor tokens,
+  instructor-only routes, secure token generation, and the passphrase-protected
+  saved-labs index.
 - `instructor-lab-index.md` documents saved-lab lookup and recovery behavior.
 - `lab-feature-availability.md` documents per-lab Quiz Generation and Socratic
   TA availability controls.

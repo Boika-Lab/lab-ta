@@ -1,5 +1,9 @@
 # Spec: Per-Generation Quiz and TA Configuration
 
+> Superseded in part by `instructor-access-control.md`: quiz generation is now
+> `POST /api/instructor/lab/{instructor_token}/quiz/generate` and the request
+> body no longer carries a lab token.
+
 ## Goal
 
 Let instructors configure language and custom instructions independently for

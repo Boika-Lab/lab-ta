@@ -1,5 +1,9 @@
 # Spec: Persistent Instructor Lab Dashboard
 
+> Superseded in part by `instructor-access-control.md`: dashboard URLs are now
+> keyed by a separate private instructor token, not the student token. The
+> hydration behavior below still applies.
+
 ## Goal
 
 Give each configured lab a durable instructor management URL that can be

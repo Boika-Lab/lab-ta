@@ -1,5 +1,9 @@
 # Spec: Optional Persistent Chat Logs
 
+> Superseded in part by `instructor-access-control.md`: the chat-log export
+> route is now `GET /api/instructor/lab/{instructor_token}/chat-logs` and
+> requires the instructor token.
+
 ## Goal
 
 Allow instructors to opt in to persistent, anonymous chat logging for a lab
