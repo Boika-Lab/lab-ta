@@ -547,10 +547,14 @@ def test_instructor_dashboard_page_known_token_and_404(client):
 
     missing = client.get("/instructor/missing")
     assert missing.status_code == 404
-    assert missing.json()["detail"] == "Lab not found"
+    assert missing.headers["content-type"].startswith("text/html")
+    assert "not available" in missing.text
+    assert "saved-labs index" in missing.text
+    assert 'id="setup-form"' not in missing.text
 
     student_token_used = client.get(f"/instructor/{token}")
     assert student_token_used.status_code == 404
+    assert "not available" in student_token_used.text
 
 
 def test_instructor_labs_page_is_not_interpreted_as_token(client):
@@ -1945,6 +1949,10 @@ def test_delete_lab_cascades_and_leaves_other_labs_intact(client, monkeypatch):
 
     # Every route for the deleted lab is gone, for both tokens.
     assert client.get(f"/instructor/{itoken(victim)}").status_code == 404
+    student_page = client.get(f"/lab/{victim}")
+    assert student_page.status_code == 404
+    assert "not available" in student_page.text
+    assert 'id="text-input"' not in student_page.text
     assert client.get(iapi(victim)).status_code == 404
     assert client.get(f"{iapi(victim)}/chat-logs").status_code == 404
     assert client.get(f"{iapi(victim)}/quiz/{victim_quiz}").status_code == 404
@@ -2005,3 +2013,45 @@ def test_delete_lab_template_hooks_exist():
     assert "fetch(`/api/instructor/lab/${encodeURIComponent(lab.instructor_token)}`, {" in index
     assert "method: 'DELETE'" in index
     assert "row.remove()" in index
+
+
+def test_student_page_serves_chat_for_known_lab_and_not_found_page_otherwise(client):
+    token = insert_lab()
+
+    known = client.get(f"/lab/{token}")
+    assert known.status_code == 200
+    assert 'id="text-input"' in known.text
+
+    for bad in ["zzzzzzzz", "missing", token.upper() + "x"]:
+        unknown = client.get(f"/lab/{bad}")
+        assert unknown.status_code == 404, bad
+        assert unknown.headers["content-type"].startswith("text/html")
+        assert "This Lab TA link is not available" in unknown.text
+        assert "ask your instructor" in unknown.text.lower()
+        assert 'id="text-input"' not in unknown.text
+
+
+def test_not_found_page_loads_no_external_resources():
+    page = Path("templates/lab_not_found.html").read_text()
+    assert "http://" not in page
+    assert "https://" not in page
+    assert "<script" not in page
+
+
+def test_student_template_handles_deleted_lab_during_session():
+    template = Path("templates/student.html").read_text()
+
+    assert "function showLabUnavailable()" in template
+    assert "This lab link is no longer available. Ask your instructor for the current link." in template
+
+    load_start = template.index("// ── Load lab info + init quiz")
+    load_body = template[load_start:template.index("function initializeFeatureAvailability()")]
+    assert "if (res.status === 404) { showLabUnavailable(); return; }" in load_body
+
+    chat_start = template.index("async function sendMessage(text)")
+    chat_body = template[chat_start:template.index("sendBtn.addEventListener('click'")]
+    assert "if (res.status === 404) { removeTyping(); showLabUnavailable(); return; }" in chat_body
+
+    quiz_start = template.index("async function initQuiz()")
+    quiz_body = template[quiz_start:template.index("quizData = data;", quiz_start)]
+    assert "if (res.status === 404) { showLabUnavailable(); return; }" in quiz_body

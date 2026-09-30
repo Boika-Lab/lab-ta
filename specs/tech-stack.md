@@ -36,6 +36,8 @@ not a target architecture.
   controls, quiz generation, quiz publishing, and stats UI.
 - The instructor template uses `localStorage` for the last TA language/custom
   instructions and quiz level/difficulty/language/custom instructions.
+- `templates/lab_not_found.html`: static, dependency-free page served with
+  status `404` for unknown or deleted student and instructor links.
 - `templates/instructor_labs.html`: saved-labs index that asks for the admin
   passphrase, keeps it in `sessionStorage`, fetches `/api/instructor/labs` with
   the `X-Lab-TA-Passphrase` header, and links to instructor dashboard and
