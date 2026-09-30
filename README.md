@@ -442,6 +442,9 @@ lab-ta/
 │   ├── instructor_labs.html
 │   │                    Saved-labs index with clickable instructor and
 │   │                    student links
+│   ├── lab_not_found.html
+│   │                    "Link not available" page served with 404 for
+│   │                    unknown or deleted student and instructor links
 │   └── student.html     Student chat UI — voice input (Web Speech API),
 │                        text-to-speech, MathJax math rendering
 ├── specs/               Specification-driven development workflow and specs

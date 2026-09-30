@@ -212,6 +212,11 @@ def load_html(name: str) -> str:
     return (TEMPLATES_DIR / name).read_text(encoding="utf-8")
 
 
+def not_found_page() -> HTMLResponse:
+    """Friendly 404 page for dead student or instructor links (no external assets)."""
+    return HTMLResponse(content=load_html("lab_not_found.html"), status_code=404)
+
+
 def render_instructor_html() -> str:
     html = load_html("instructor.html")
     replacements = {
@@ -486,12 +491,20 @@ async def instructor_labs() -> HTMLResponse:
 @app.get("/instructor/{instructor_token}", response_class=HTMLResponse)
 async def instructor_dashboard(instructor_token: str) -> HTMLResponse:
     with get_db() as conn:
-        require_instructor_lab(conn, instructor_token)
+        row = conn.execute(
+            "SELECT 1 FROM labs WHERE instructor_token = ?", (instructor_token,)
+        ).fetchone()
+    if not row:
+        return not_found_page()
     return HTMLResponse(content=render_instructor_html())
 
 
 @app.get("/lab/{token}", response_class=HTMLResponse)
 async def student_chat(token: str) -> HTMLResponse:
+    with get_db() as conn:
+        row = conn.execute("SELECT 1 FROM labs WHERE token = ?", (token,)).fetchone()
+    if not row:
+        return not_found_page()
     return HTMLResponse(content=load_html("student.html"))
 
 

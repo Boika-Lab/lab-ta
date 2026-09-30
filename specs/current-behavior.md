@@ -33,7 +33,9 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   instructor token returns `404`, and a student token used on an instructor
   route is treated as unknown and also returns `404`. Instructor tokens and
   URLs are never returned by student-facing routes.
-- `GET /instructor/{instructor_token}` serves the instructor dashboard.
+- `GET /instructor/{instructor_token}` serves the instructor dashboard for a
+  known token. An unknown token receives the static
+  `templates/lab_not_found.html` page with status `404`.
 - `GET /api/instructor/lab/{instructor_token}` returns dashboard hydration
   data including lab name, model, student token, instructor token, relative
   student URL, relative instructor URL, chat logging status, and the active
@@ -87,7 +89,13 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 
 ## Student Chat
 
-- `GET /lab/{token}` serves the student chat page.
+- `GET /lab/{token}` serves the student chat page for a known token. An
+  unknown or deleted token receives `templates/lab_not_found.html` with status
+  `404`, so a stale bookmark or QR code fails clearly instead of showing a chat
+  screen that errors on the first message.
+- If the lab disappears while the student page is open, a `404` from the
+  lab-info, chat, or active-quiz request switches the page to an unavailable
+  message and hides the input bar and quiz panel.
 - `GET /api/lab/{token}` returns the lab name and model for known tokens, and
   `404` for unknown tokens. It also returns whether quiz and Socratic TA
   features are enabled.
