@@ -116,9 +116,13 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   consulting an external database such as ChemSpider or WolframAlpha.
 - A literal `\study` message begins a fresh, stateless, document-grounded study
   interaction. The TA presents 5–10 potential questions, accepts either a
-  number or `number: answer`, and gives concise, scaffolded feedback. It does
-  not claim persistent progress or scoring. `\study off` explicitly ends study
-  behavior, while ordinary lab questions may be handled normally at any point.
+  number or `number: answer`, and gives concise, scaffolded feedback. A bare
+  number makes the TA restate that question and wait for an attempt; it does
+  not answer, hint, or state the fact, even when the handout contains it. The
+  factual-lookup exception applies to facts the student asks for, not to a
+  study question the TA posed. It does not claim persistent progress or
+  scoring. `\study off` explicitly ends study behavior, while ordinary lab
+  questions may be handled normally at any point.
 - The TA does not draw, complete, predict, or validate reaction mechanisms. It
   directs students to the manual and instructor, but may discuss high-level,
   document-grounded conceptual principles.

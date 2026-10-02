@@ -25,7 +25,9 @@ defined by the repository-controlled system prompt.
   directs students to their manual and instructor, then may discuss only
   handout-supported high-level concepts.
 - A literal `\study` starts a fresh, stateless menu of 5–10 handout-grounded
-  questions. Students may select a number or provide `number: answer`.
+  questions. Students may select a number or provide `number: answer`. A bare
+  number restates the question and waits for an attempt; see
+  `study-question-selection.md`.
 - Study feedback explicitly affirms correct work, scaffolds partial or incorrect
   work without revealing a complete answer, and lets students choose additional
   practice on the same topic or another menu question. `\study off` ends study

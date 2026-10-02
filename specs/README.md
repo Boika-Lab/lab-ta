@@ -56,6 +56,8 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   for generated prelab quiz questions and answer keys.
 - `socratic-ta-study-and-factual-responses.md` documents prompt-only factual
   lookup, reaction-mechanism, and stateless study behavior.
+- `study-question-selection.md` documents that picking a study question by
+  number restates it and waits for an attempt instead of answering it.
 - `unknown-lab-pages.md` documents the not-found page for dead student and
   instructor links and the student page's handling of a deleted lab.
 - `template.md` is the starting point for future feature or change specs.
