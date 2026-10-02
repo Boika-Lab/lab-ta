@@ -69,6 +69,16 @@ unchanged.
 - Static test asserting the new sentences are present in the prompt file.
 - Manual live re-test as above, recorded in the acceptance results.
 
+## Verification
+
+- Live re-test on 2026-10-02 on the summer workstation, `main` at 06f2686,
+  model `gemini/gemini-3.5-flash-lite`: after `\study`, selecting a menu
+  question about Aliquat 336 (a fact stated in the handout) by bare number
+  made the TA restate the question and wait. No answer, hint, or explanation
+  was given. Result: pass.
+- Summer labs still store `gemini/gemini-2.5-flash` and were not re-tested;
+  they are to be retired from student use when the fall labs are created.
+
 ## Open Questions
 
 - None.
