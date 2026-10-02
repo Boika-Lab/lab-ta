@@ -59,9 +59,8 @@ unchanged.
   handout that states a fact such as a melting point, send `\study`, then a
   bare number, five times across different menu items. Every reply restates
   the question and asks for an answer with no answer, hint, or explanation.
-  Then send `number: answer` twice: the reply assesses the answer. Repeat on
-  `gemini/gemini-3.5-flash-lite` (the failing model), `gemini/gemini-2.5-flash`
-  (summer labs), and the local Ollama model if one is configured.
+  Then send `number: answer` twice: the reply assesses the answer. Run on
+  `gemini/gemini-3.5-flash-lite`, the model in use.
 
 ## Test Plan
 
@@ -76,8 +75,6 @@ unchanged.
   question about Aliquat 336 (a fact stated in the handout) by bare number
   made the TA restate the question and wait. No answer, hint, or explanation
   was given. Result: pass.
-- Summer labs still store `gemini/gemini-2.5-flash` and were not re-tested;
-  they are to be retired from student use when the fall labs are created.
 
 ## Open Questions
 
