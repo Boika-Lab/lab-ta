@@ -186,7 +186,7 @@ Before you begin, make sure the following are in place on the **server machine**
   how Tailscale is installed and a Linux-only troubleshooting step, both noted
   where they apply.
 - **Python 3.11 or newer** — check with `python3 --version`. The app is tested
-  on 3.11 and 3.12. macOS ships with a system Python that may be older; if so,
+  on 3.11, 3.12, and 3.14. macOS ships with a system Python that may be older; if so,
   install a current version from
   [python.org](https://www.python.org/downloads/) or with Homebrew.
 - Credentials for the selected hosted provider, or a local LiteLLM-compatible
