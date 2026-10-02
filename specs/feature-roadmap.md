@@ -73,6 +73,8 @@ future feature areas.
   the instructor token in place and revokes the old instructor URL.
 - Completed Delete Lab spec: cascade deletion of a lab and its quizzes, stats,
   and chat logs after typed-token confirmation.
+- Completed Gemini 2.5 Retirement spec: all defaults on Gemini 3.5 Flash-Lite,
+  retired identifiers rewritten at startup, screening failures logged.
 - Completed Quiz Completion Feedback spec.
 - Completed Optional Persistent Chat Logs spec, including SQLite upgrade
   behavior, route contracts, and template wiring tests.

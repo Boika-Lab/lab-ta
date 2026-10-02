@@ -15,9 +15,9 @@ Students continue using the same quiz and Socratic TA interfaces.
 - Each lab stores immutable model identifiers for TA chat, screening, and quiz
   generation.
 - The three roles share one optional API key and one optional API base URL.
-- New labs default to `gemini/gemini-3.5-flash-lite` for chat and quiz generation
-  and `gemini/gemini-2.5-flash-lite` for screening. See
-  `gemini-3-5-flash-lite-defaults.md` for the current values and rationale.
+- New labs default to `gemini/gemini-3.5-flash-lite` for chat, quiz generation,
+  and screening. See `gemini-2-5-retirement.md` for the current values, the
+  rationale, and the one-time rewrite of retired identifiers.
 - Model identifiers are freeform LiteLLM model strings.
 - Custom API base URLs are limited to HTTP(S) loopback addresses:
   `localhost`, `127.0.0.1`, and `::1`.

@@ -24,8 +24,11 @@ spec. Any API, database, prompt, workflow, or user-visible behavior change does.
   its stored data from the dashboard or the saved-labs index.
 - `centralized-gemini-model-configuration.md` documents server-controlled
   Gemini model role configuration from the earlier Gemini-only implementation.
-- `gemini-3-5-flash-lite-defaults.md` documents the default chat and quiz model
-  identifiers for new labs and where they are defined.
+- `gemini-2-5-retirement.md` documents the move of all three model defaults
+  to Gemini 3.5 Flash-Lite, the startup rewrite of retired 2.5 identifiers,
+  and the screening-failure warning.
+- `gemini-3-5-flash-lite-defaults.md` documents the earlier change of the chat
+  and quiz defaults (historical; superseded in part).
 - `instructor-access-control.md` documents separate instructor tokens,
   instructor-only routes, secure token generation, and the passphrase-protected
   saved-labs index.
