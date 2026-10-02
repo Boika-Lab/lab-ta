@@ -11,3 +11,6 @@ __pycache__/
 .DS_Store
 # Local working docs (paper drafts etc.)
 docs/
+
+# Service or process logs written next to the code
+*.log
