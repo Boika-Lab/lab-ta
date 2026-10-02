@@ -2055,3 +2055,21 @@ def test_student_template_handles_deleted_lab_during_session():
     quiz_start = template.index("async function initQuiz()")
     quiz_body = template[quiz_start:template.index("quizData = data;", quiz_start)]
     assert "if (res.status === 404) { showLabUnavailable(); return; }" in quiz_body
+
+
+def test_ta_prompt_asks_selected_study_question_instead_of_answering_it():
+    prompt = Path("prompts/ta_system.md").read_text()
+    study = prompt[prompt.index("<study_behavior>"):prompt.index("</study_behavior>")]
+
+    assert "repeat that question word for word, ask for their answer, and stop." in study
+    assert (
+        "Do not give the answer, an explanation, a hint, or the fact the question asks for, "
+        "even when the lab content states it outright." in study
+    )
+    assert (
+        "The factual-lookup exception in rule 1 does not apply to a question you posed "
+        "until the student has attempted it." in study
+    )
+    rules = prompt[prompt.index("<rules>"):prompt.index("</rules>")]
+    assert "does not cover a study question that you posed yourself (see study rule 2)" in rules
+    assert "does not apply to a study question you posed; see study rule 2" in rules
