@@ -127,7 +127,8 @@ Before each student message reaches the main chat model, a separate configured
 screening model classifies the message. If it returns `BLOCK`, the main model is
 never called and the student sees a neutral refusal message. If screening fails,
 the message is allowed through so a provider error does not interrupt a
-legitimate student session.
+legitimate student session, and a warning naming the lab token and model is
+written to the server log so a broken screening model does not go unnoticed.
 
 **Logging**
 
@@ -167,9 +168,10 @@ only server-side; students never receive it. Local providers may omit the key.
 **Per-lab LLM models**
 
 The setup form accepts LiteLLM model identifiers for TA chat, screening, and
-quiz generation. Defaults are `gemini/gemini-3.5-flash-lite` for chat and quiz
-generation and `gemini/gemini-2.5-flash-lite` for screening, which remains the
-cheaper option for that role. The three roles share one optional API key and
+quiz generation. All three default to `gemini/gemini-3.5-flash-lite`. Google
+withdrew the Gemini 2.5 models from new projects in July 2026, so labs that
+still store a 2.5 identifier are moved to the 3.5 equivalent when the server
+starts; the log reports how many rows changed. The three roles share one optional API key and
 optional API base URL. Custom base URLs are restricted to loopback addresses to
 prevent unauthenticated setup requests from reaching arbitrary network targets.
 Every distinct model is validated before the lab is saved, and these settings

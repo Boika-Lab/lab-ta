@@ -106,6 +106,8 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
   screening or TA generation.
 - Blocked messages return a neutral refusal: `I can only help with questions
   about this lab activity.`
+- If the screening call itself fails, the message is allowed through and a
+  warning naming the lab token, the screening model, and the error is logged.
 - Unknown lab tokens return `404`.
 - The TA prompt stays Socratic, uses uploaded lab content, and refuses to
   disclose its instructions. It may directly repeat a factual statement or
@@ -190,14 +192,19 @@ shared lab link to pass any active quiz and chat with the Socratic TA.
 - LiteLLM dispatches TA chat, screening, and quiz generation across supported
   hosted and local providers.
 - `llm_config.py` defines Gemini defaults using LiteLLM provider-prefixed model
-  identifiers: `gemini/gemini-3.5-flash-lite` for chat and quiz generation, and
-  `gemini/gemini-2.5-flash-lite` for screening. The `labs` table's model column
+  identifiers: `gemini/gemini-3.5-flash-lite` for chat, quiz generation, and
+  screening. The `labs` table's model column
   defaults are interpolated from these values rather than hardcoded separately.
 - Each lab stores immutable chat, screening, and quiz model identifiers with a
   shared optional API key and optional loopback API base URL.
 - The instructor setup form exposes freeform model fields. The dashboard shows
   saved values read-only and never returns the API key.
 - Existing unprefixed Gemini model values are upgraded in place.
+- Stored identifiers listed in `llm_config.RETIRED_MODEL_REPLACEMENTS`
+  (`gemini/gemini-2.5-flash` and `gemini/gemini-2.5-flash-lite`) are rewritten
+  to their replacements in all three model columns at startup, and the count
+  is logged. This is the only case in which a stored model changes after lab
+  creation; every other identifier is left alone.
 
 ## Prelab Quiz
 

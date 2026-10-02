@@ -195,7 +195,11 @@ def test_configure_stores_configured_chat_model(client):
 def test_default_model_identifiers():
     assert llm_config.CHAT_MODEL == "gemini/gemini-3.5-flash-lite"
     assert llm_config.QUIZ_MODEL == "gemini/gemini-3.5-flash-lite"
-    assert llm_config.SCREENING_MODEL == "gemini/gemini-2.5-flash-lite"
+    assert llm_config.SCREENING_MODEL == "gemini/gemini-3.5-flash-lite"
+    assert llm_config.RETIRED_MODEL_REPLACEMENTS == {
+        "gemini/gemini-2.5-flash": llm_config.CHAT_MODEL,
+        "gemini/gemini-2.5-flash-lite": llm_config.SCREENING_MODEL,
+    }
 
 
 def test_labs_table_model_defaults_come_from_llm_config():
@@ -488,9 +492,9 @@ def test_init_db_upgrades_existing_labs_table_missing_chat_logging_column(
     assert migrated["instructor_token"]
     assert len(migrated["instructor_token"]) >= 32
     assert migrated["instructor_token"] != "legacy1"
-    # The prefix migration prepends `gemini/` to an existing model rather than
-    # replacing it with the current default, so this is the legacy value fixed up.
-    assert row["model"] == "gemini/gemini-2.5-flash"
+    # The prefix migration turns the bare legacy name into `gemini/gemini-2.5-flash`,
+    # and the retirement migration then replaces that withdrawn identifier.
+    assert row["model"] == llm_config.RETIRED_MODEL_REPLACEMENTS["gemini/gemini-2.5-flash"]
     assert row["screening_model"] == llm_config.SCREENING_MODEL
     assert row["quiz_model"] == llm_config.QUIZ_MODEL
     assert row["api_base"] is None
@@ -2073,3 +2077,64 @@ def test_ta_prompt_asks_selected_study_question_instead_of_answering_it():
     rules = prompt[prompt.index("<rules>"):prompt.index("</rules>")]
     assert "does not cover a study question that you posed yourself (see study rule 2)" in rules
     assert "does not apply to a study question you posed; see study rule 2" in rules
+
+
+def test_init_db_replaces_retired_gemini_models_in_every_role_and_is_idempotent():
+    insert_lab(
+        token="old2five",
+        chat_model="gemini/gemini-2.5-flash",
+        screening_model="gemini/gemini-2.5-flash-lite",
+        quiz_model="gemini/gemini-2.5-flash",
+    )
+    insert_lab(
+        token="keepers1",
+        chat_model="gemini/gemini-3.5-flash",
+        screening_model="ollama/llama3.1",
+        quiz_model="gemini/gemini-3.1-flash-lite",
+    )
+
+    main.init_db()
+
+    with main.get_db() as conn:
+        old = conn.execute(
+            "SELECT model, screening_model, quiz_model FROM labs WHERE token = 'old2five'"
+        ).fetchone()
+        kept = conn.execute(
+            "SELECT model, screening_model, quiz_model FROM labs WHERE token = 'keepers1'"
+        ).fetchone()
+    assert dict(old) == {
+        "model": "gemini/gemini-3.5-flash-lite",
+        "screening_model": "gemini/gemini-3.5-flash-lite",
+        "quiz_model": "gemini/gemini-3.5-flash-lite",
+    }
+    assert dict(kept) == {
+        "model": "gemini/gemini-3.5-flash",
+        "screening_model": "ollama/llama3.1",
+        "quiz_model": "gemini/gemini-3.1-flash-lite",
+    }
+
+    main.init_db()
+    with main.get_db() as conn:
+        again = conn.execute(
+            "SELECT model, screening_model, quiz_model FROM labs WHERE token = 'old2five'"
+        ).fetchone()
+    assert dict(again) == dict(old)
+
+
+def test_screen_message_logs_a_warning_and_passes_when_the_call_fails(monkeypatch, caplog):
+    async def failing_complete(**kwargs):
+        raise RuntimeError("model not found")
+
+    monkeypatch.setattr(main, "complete", failing_complete)
+    with caplog.at_level("WARNING"):
+        passed = asyncio.run(
+            main.screen_message("key", None, "gemini/gemini-2.5-flash-lite", "abc12345", "hi")
+        )
+
+    assert passed is True
+    assert any(
+        "Screening failed for token=abc12345" in r.getMessage()
+        and "gemini/gemini-2.5-flash-lite" in r.getMessage()
+        and "model not found" in r.getMessage()
+        for r in caplog.records
+    )

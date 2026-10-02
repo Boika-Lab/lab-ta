@@ -1,5 +1,9 @@
 # Spec: Gemini 3.5 Flash-Lite Defaults
 
+> Superseded by `gemini-2-5-retirement.md` on 2026-10-02: screening now also
+> defaults to `gemini/gemini-3.5-flash-lite`, and stored 2.5 identifiers are
+> rewritten at startup. The reasoning below is kept for history.
+
 ## Goal
 
 Move the default chat and quiz-generation models for new labs from

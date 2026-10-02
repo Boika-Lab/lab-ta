@@ -122,6 +122,24 @@ def init_db() -> None:
             WHERE model LIKE 'gemini-%'
             """
         )
+        # Replace identifiers Google has withdrawn. This is the one deliberate
+        # exception to "stored models are immutable"; see
+        # specs/gemini-2-5-retirement.md.
+        for retired, replacement in llm_config.RETIRED_MODEL_REPLACEMENTS.items():
+            replaced = 0
+            for column in ("model", "screening_model", "quiz_model"):
+                cur = conn.execute(
+                    f"UPDATE labs SET {column} = ? WHERE {column} = ?",
+                    (replacement, retired),
+                )
+                replaced += cur.rowcount
+            if replaced:
+                logging.info(
+                    "Replaced retired model %s with %s in %d lab column(s)",
+                    retired,
+                    replacement,
+                    replaced,
+                )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS quizzes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -535,8 +553,17 @@ async def screen_message(
                 "Screening blocked message for token=%s: %r", token, message
             )
             return False
-    except Exception:
-        pass  # Default to PASS so screening errors never break the student
+    except Exception as exc:
+        # Default to PASS so a provider error never breaks the student, but
+        # say so: a retired or misconfigured screening model would otherwise
+        # switch this layer off silently.
+        logging.warning(
+            "Screening failed for token=%s with model=%s; allowing message "
+            "through: %s",
+            token,
+            model,
+            exc,
+        )
     return True
 
 
