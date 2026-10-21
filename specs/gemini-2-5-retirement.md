@@ -28,9 +28,10 @@ screening protects the Socratic rules.
   `gemini-2.5-flash` and `gemini-2.5-flash-lite` as "not deprecated" with "no
   shutdown date announced", but access is "limited to users who have actively
   used them in the past"; new projects are told to use 3.5 Flash-Lite or 3.8
-  Flash. Developers reported "no longer available" errors for both models on
-  new projects from 2026-07-09. Vertex AI lists 2026-10-20 as the retirement
-  date for 2.5 Flash-Lite.
+  Flash. The restriction is dated 2026-09-18 in the Gemini API changelog;
+  developers had already reported "no longer available" errors for both
+  models on new projects from 2026-07-09. Vertex AI lists 2026-10-20 as the
+  retirement date for 2.5 Flash-Lite.
 
 ## Proposed Behavior
 
@@ -104,6 +105,7 @@ re-tested on. The choice is one constant; flipping `CHAT_MODEL` and
 
 ## Sources
 
+- [Gemini API changelog, 2026-09-18 entry](https://ai.google.dev/gemini-api/docs/changelog)
 - [Gemini API deprecations](https://ai.google.dev/gemini-api/docs/deprecations)
 - [Gemini API models](https://ai.google.dev/gemini-api/docs/models)
 - [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
