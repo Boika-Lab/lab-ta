@@ -169,7 +169,7 @@ only server-side; students never receive it. Local providers may omit the key.
 
 The setup form accepts LiteLLM model identifiers for TA chat, screening, and
 quiz generation. All three default to `gemini/gemini-3.5-flash-lite`. Google
-withdrew the Gemini 2.5 models from new projects in July 2026, so labs that
+restricted the Gemini 2.5 models to existing users on September 18, 2026, so labs that
 still store a 2.5 identifier are moved to the 3.5 equivalent when the server
 starts; the log reports how many rows changed. The three roles share one optional API key and
 optional API base URL. Custom base URLs are restricted to loopback addresses to
